@@ -1,0 +1,21 @@
+# Local signing credentials
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.pem
+.env
+.env.*
+
+# Build output and local caches
+source/work/
+source/mod2/work/
+__pycache__/
+*.pyc
+*.class
+
+# Source archive may contain signing credentials; track source files instead
+out/dorok-keyboard-mod-source.zip
+
+# Duplicate APK wrapper; the installable APK is tracked directly
+out/dorok-keyboard-spell-apk.zip

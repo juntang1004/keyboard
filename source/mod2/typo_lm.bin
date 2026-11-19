@@ -1,0 +1,56 @@
+OK   g a -> 가
+OK   g a a -> 거
+OK   g a a a -> 가
+OK   n h -> ㄷ
+OK   n h h -> ㅌ
+OK   n h h h -> ㄴ
+OK   g ss -> ㄲ
+OK   g ss ss -> ㄱ
+OK   m h -> ㅂ
+OK   m h h -> ㅍ
+OK   m h h h -> ㅁ
+OK   s h -> ㅈ
+OK   s h h -> ㅊ
+OK   s h h h -> ㅅ
+OK   ng h -> ㅎ
+OK   ng h h -> ㅇ
+OK   g h -> ㅋ
+OK   g h h -> ㄱ
+OK   r h -> ㄹ
+OK   s ss -> ㅆ
+OK   s h ss -> ㅉ
+OK   n h ss -> ㄸ
+OK   m h ss -> ㅃ
+OK   g h ss -> ㅋ
+OK   g a h -> 갸
+OK   g a a h -> 겨
+OK   g a h h -> 가
+OK   g o -> 고
+OK   g o o -> 구
+OK   g o h -> 교
+OK   g o o h -> 규
+OK   g a i -> 개
+OK   g a a i -> 게
+OK   g a h i -> 걔
+OK   g a a h i -> 계
+OK   g o a -> 과
+OK   g o o a -> 궈
+OK   g o i -> 괴
+OK   g o o i -> 귀
+OK   g eu i -> 긔
+OK   g o a i -> 괘
+OK   g o o a i -> 궤
+OK   g a i h -> 개
+OK   g o a a -> 과
+OK   g a g a -> 가가
+OK   g a n i -> 가니
+OK   g a r g -> 갉
+OK   g a r g a -> 갈가
+OK   g a g ss -> 갂
+OK   g a s ss -> 갔
+OK   g a s ss a -> 가싸
+OK   g a n h -> 갇
+OK   g a n h h -> 같
+OK   g a sp -> 가 
+OK   g a g sp g -> 각 ㄱ
+ALL 55 OK

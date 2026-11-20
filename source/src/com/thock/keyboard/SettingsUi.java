@@ -878,21 +878,24 @@ public final class SettingsUi {
                 on -> ext().edit().putBoolean("qnumrow", on).apply());
 
         LinearLayout cm = card(b, "커서 이동");
+        switchRow(cm, "자판 위에서 밀어 커서 이동", "글자 키 위에서 손가락을 좌우로 길게 밀면 글자 대신 커서가 움직여요 (삼성 키보드처럼)",
+                ext().getBoolean("key_cursor", true), on -> ext().edit().putBoolean("key_cursor", on).apply());
+        divider(cm);
         LinearLayout cmx = col();          // options shown only while 커서 이동 is on
         switchRow(cm, "스페이스바로 커서 이동", "스페이스바를 꾹 누르거나 좌우로 끌어서 커서를 움직여요", ext().getBoolean("space_cursor", true),
                 on -> { ext().edit().putBoolean("space_cursor", on).apply(); cmx.setVisibility(on ? View.VISIBLE : View.GONE); });
         cm.addView(cmx);
         cmx.setVisibility(ext().getBoolean("space_cursor", true) ? View.VISIBLE : View.GONE);
         divider(cmx);
-        switchRow(cmx, "누르고 있으면 계속 이동 (아이폰식)", "손을 뗄 때까지 계속 움직여요. 조금 끌면 천천히, 많이 끌면 빠르게. 끄면 끈 거리만큼만 움직여요",
-                ext().getBoolean("space_joystick", true), on -> ext().edit().putBoolean("space_joystick", on).apply());
+        switchRow(cmx, "누르고 있으면 계속 이동 (아이폰식)", "손을 뗄 때까지 계속 움직여요. 조금 끌면 천천히, 많이 끌면 빠르게. 끄면 삼성 키보드처럼 끈 거리만큼만 움직여요",
+                ext().getBoolean("space_joystick2", false), on -> ext().edit().putBoolean("space_joystick2", on).apply());
         divider(cmx);
         switchRow(cmx, "상하 이동", "위아래로 끌면 윗줄·아랫줄로 커서가 움직여요", ext().getBoolean("space_vertical", false),
                 on -> ext().edit().putBoolean("space_vertical", on).apply());
         divider(cmx);
         sliderF(cmx, "커서 이동 속도", 1, 20, ext().getInt("cursor_speed10", 10), v -> (v / 10) + "." + (v % 10) + "배",
                 v -> ext().edit().putInt("cursor_speed10", v).apply());
-        cmx.addView(tv("1.0배가 기본 속도예요. 낮추면 느리게, 올리면 빠르게 움직여요.", 13, sub, false), mlp(-1, -2, 14, 0, 14, 10));
+        cmx.addView(tv("1.0배가 삼성 키보드와 같은 속도예요 (손가락을 화면 폭의 약 4.4% 움직이면 한 칸). 낮추면 느리게, 올리면 빠르게 움직여요.", 13, sub, false), mlp(-1, -2, 14, 0, 14, 10));
 
         LinearLayout tb = card(b, "툴바 버튼");
         sliderF(tb, "툴바 크기", 5, 10, ext().getInt("tb_scale10", 10), v -> (v / 10) + "." + (v % 10) + "배",

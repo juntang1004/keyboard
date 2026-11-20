@@ -18,4 +18,4 @@ __pycache__/
 out/dorok-keyboard-mod-source.zip
 
 # Duplicate APK wrapper; the installable APK is tracked directly
-out/dorok-keyboard-spell-apk.zip
+out/*-apk.zip

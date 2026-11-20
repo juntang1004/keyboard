@@ -2235,7 +2235,12 @@ public final class Ext {
 
     /** 스페이스바 커서 이동 on/off, 계속 이동(아이폰식) on/off */
     private static boolean spaceCursorOn() { return opt("space_cursor"); }
-    private static boolean spaceJoystick() { return opt("space_joystick"); }
+    /** 기본은 삼성식(끈 거리만큼). 예전 기본값(계속 이동)이 너무 빨라서 새 키로 바꿈 */
+    private static boolean spaceJoystick() { return optOff("space_joystick2"); }
+    /** 글자 키 위에서 좌우로 밀어 커서 이동 (삼성 키보드처럼) */
+    private static boolean keyCursorOn() { return opt("key_cursor"); }
+    /** 키보드 폭 (커서 이동 거리 기준) */
+    private static float kbW() { return svc == null ? 1080 : svc.getResources().getDisplayMetrics().widthPixels; }
     /** 커서 이동 속도 배율 (1.0 = 기본) */
     private static float cursorSpeed() { return svc == null ? 1f : Math.max(1, Math.min(20, prefs().getInt("cursor_speed10", 10))) / 10f; }
 
@@ -2286,6 +2291,9 @@ public final class Ext {
     private static void attachKey(View f, KS k) {
         f.setTag(k);
         final boolean[] fired = {false};
+        final boolean[] keyCursor = {false};       // 글자 키를 밀어서 커서 이동 중
+        final float[] downY = {0};
+        final CursorDrag drag = new CursorDrag();
         final Runnable[] repeat = new Runnable[1];
         repeat[0] = () -> { cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat(); H.postDelayed(repeat[0], 45); };
         final Runnable longPress = () -> {
@@ -2295,6 +2303,7 @@ public final class Ext {
             if (kk.code == K_SPACE) {            // 스페이스 길게: 커서 이동 모드
                 fired[0] = true;
                 spaceCursor = true;
+                drag.activate(touchRawX);
                 finishComposing();
                 if (spaceJoystick()) { H.removeCallbacks(cursorRepeat); H.post(cursorRepeat); }
                 if (hapticOn()) f.performHapticFeedback(0);
@@ -2334,6 +2343,9 @@ public final class Ext {
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     fired[0] = false;
+                    keyCursor[0] = false;
+                    drag.start(touchRawX, e.getEventTime());
+                    downY[0] = touchRawY;
                     v.setPressed(true);
                     feedback(v, code, true);
                     typoTouch(kk, v);
@@ -2374,21 +2386,41 @@ public final class Ext {
                             fired[0] = true;
                             finishComposing();
                             if (joy) { H.removeCallbacks(cursorRepeat); H.post(cursorRepeat); }
-                            else { spaceX0 = touchRawX; spaceY0 = touchRawY; dx = 0; dy = 0; }
+                            else { spaceX0 = touchRawX; spaceY0 = touchRawY; dx = 0; dy = 0; drag.activate(touchRawX); }
                         }
                         if (spaceCursor && joy) {
                             spaceDx = dx;                 // 처음 누른 곳 기준 거리 → 속도
                             spaceDy = dy;
                         } else if (spaceCursor) {
-                            float step = dp(10) / cursorSpeed();
-                            while (dx >= step) { cursorStep(KeyEvent.KEYCODE_DPAD_RIGHT); spaceX0 += step; dx -= step; }
-                            while (dx <= -step) { cursorStep(KeyEvent.KEYCODE_DPAD_LEFT); spaceX0 -= step; dx += step; }
+                            float w = kbW();
+                            int n = drag.moveActive(touchRawX, w, cursorSpeed());
+                            for (; n > 0; n--) cursorStep(KeyEvent.KEYCODE_DPAD_RIGHT);
+                            for (; n < 0; n++) cursorStep(KeyEvent.KEYCODE_DPAD_LEFT);
                             if (vert) {
                                 float vs = dp(28) / cursorSpeed();      // one line per ~28dp
                                 while (dy >= vs) { cursorStep(KeyEvent.KEYCODE_DPAD_DOWN); spaceY0 += vs; dy -= vs; }
                                 while (dy <= -vs) { cursorStep(KeyEvent.KEYCODE_DPAD_UP); spaceY0 -= vs; dy += vs; }
                             }
                         }
+                    } else if (isLetterCode(code) && keyCursorOn() && (!fired[0] || keyCursor[0])) {
+                        // 글자 키 위에서 좌우로 밀기: 충분히 밀면 글자는 안 넣고 커서 이동 (삼성 키보드처럼)
+                        float w = kbW(), ax = Math.abs(touchRawX - drag.origin()), ay = Math.abs(touchRawY - downY[0]);
+                        if (!keyCursor[0] && ax > dp(12)) H.removeCallbacks(longPress);   // 밀기 시작하면 길게 누르기 취소
+                        if (!keyCursor[0] && ay > ax) return true;                        // 위아래로 더 많이 움직이면 시작 안 함
+                        int n = drag.moveKey(touchRawX, e.getEventTime(), w, cursorSpeed());
+                        if (!keyCursor[0] && drag.active()) {
+                            keyCursor[0] = true;
+                            fired[0] = true;
+                            H.removeCallbacks(longPress);
+                            v.setPressed(false);
+                            Typo.reset();
+                            Spell.beforeKey(spellHost, false);
+                            Calib.discardPending();
+                            finishComposing();
+                            if (hapticOn()) v.performHapticFeedback(0);
+                        }
+                        for (; n > 0; n--) cursorStep(KeyEvent.KEYCODE_DPAD_RIGHT);
+                        for (; n < 0; n++) cursorStep(KeyEvent.KEYCODE_DPAD_LEFT);
                     }
                     return true;
                 case MotionEvent.ACTION_UP:

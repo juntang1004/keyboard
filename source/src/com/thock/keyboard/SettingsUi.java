@@ -171,6 +171,7 @@ public final class SettingsUi {
             case "typo": v = pageTypo(); break;
             case "typo_words": v = pageTypoWords(); break;
             case "typo_rules": v = pageTypoRules(); break;
+            case "typo_block": v = pageTypoBlock(); break;
             case "spell": v = pageSpell(); break;
             case "calib": v = pageCalib(); break;
             case "calib_train": v = pageCalibTrain(); break;
@@ -570,6 +571,19 @@ public final class SettingsUi {
         }
         navRow(ks, LineIcon.SWAP, "키보드 전환", def ? "도록 키보드 사용 중" : "눌러서 도록 키보드로 바꾸기", this::pickIme);
 
+        // test
+        LinearLayout t = card(b, "타자 테스트");
+        EditText et = new EditText(a);
+        et.setHint("여기를 눌러서 쳐 보세요");
+        et.setHintTextColor(sub);
+        et.setTextColor(text);
+        et.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        et.setMinLines(3);
+        et.setGravity(Gravity.TOP | Gravity.START);
+        et.setBackground(null);
+        et.setPadding(dp(14), dp(12), dp(14), dp(12));
+        t.addView(et);
+
         // hero: current switch
         String[] cur = currentSwitch();
         LinearLayout hero = col();
@@ -612,10 +626,6 @@ public final class SettingsUi {
         divider(m);
         navRow(m, LineIcon.KEYBOARD, "자판 · 크기", ("nara".equals(koType()) ? "나랏글" : "qwerty".equals(koType()) ? "쿼티" : "천지인") + " · 높이 " + prefs.getHeightPct() + "% · 너비 " + prefs.getWidthPct() + "%", () -> open("layout"));
         divider(m);
-        navRow(m, LineIcon.THEME, "테마", prefs.getLightTheme() ? "흰색" : "어두운 색", () -> open("theme"));
-        divider(m);
-        navRow(m, LineIcon.CLIPBOARD, "클립보드", prefs.getClipboard() ? "복사 기록 켜짐" : "꺼짐", () -> open("clip"));
-        divider(m);
         Typo.load(a);
         Spell.load(a);
         navRow(m, LineIcon.MESSAGE, "오타 제안 · 자동 교정", (Typo.on ? "제안 켜짐" : "제안 꺼짐") + " · 자동 교정 " + (Typo.auto ? "모두" : Typo.autoUU ? "ㅠ·ㅜ만" : "꺼짐")
@@ -624,19 +634,10 @@ public final class SettingsUi {
         Calib.load(a);
         navRow(m, LineIcon.PENCIL, "오타 학습 · 터치 보정", Calib.isOn(a) ? "보정 켜짐 · 기록 " + Calib.samples.size() + "번"
                 : Calib.samples.isEmpty() ? "따라 쓰기로 내 터치 습관 학습" : "보정 꺼짐 · 기록 " + Calib.samples.size() + "번", () -> open("calib"));
-
-        // test
-        LinearLayout t = card(b, "타자 테스트");
-        EditText et = new EditText(a);
-        et.setHint("여기를 눌러서 쳐 보세요");
-        et.setHintTextColor(sub);
-        et.setTextColor(text);
-        et.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        et.setMinLines(3);
-        et.setGravity(Gravity.TOP | Gravity.START);
-        et.setBackground(null);
-        et.setPadding(dp(14), dp(12), dp(14), dp(12));
-        t.addView(et);
+        divider(m);
+        navRow(m, LineIcon.THEME, "테마", prefs.getLightTheme() ? "흰색" : "어두운 색", () -> open("theme"));
+        divider(m);
+        navRow(m, LineIcon.CLIPBOARD, "클립보드", prefs.getClipboard() ? "복사 기록 켜짐" : "꺼짐", () -> open("clip"));
 
         // 신버전(이 수정판) / 구버전(원작자 기본 화면) 전환 - 원작자 v5.5.0
         LinearLayout vs = card(b, "버전");
@@ -1436,14 +1437,47 @@ public final class SettingsUi {
         int spellOff = 0;
         for (Spell.Item it : Spell.items) if (!Spell.enabled(it)) spellOff++;
         navRow(sc, LineIcon.SWAP, "맞춤법 목록", Spell.items.size() + "개" + (spellOff > 0 ? " · 꺼짐 " + spellOff + "개" : ""), () -> { spellQuery = ""; spellOffOnly = false; open("spell"); });
-        LinearLayout k = card(b, "고치지 않기로 한 말");
-        k.addView(tv(Typo.block.isEmpty() ? "아직 없어요. 고친 것을 지우기로 되돌리면 여기에 기억돼요." : Typo.block.size() + "개 · 되돌렸던 말은 다시 고치지 않아요.", 14, text, false), mlp(-1, -2, 14, 12, 14, 12));
-        if (!Typo.block.isEmpty())
-            b.addView(ghostBtn("고치지 않기로 한 말 모두 지우기", RED, () -> { Typo.block.clear(); Typo.saveData(a); show("typo", false); }), mlp(-1, -2, 0, 12, 0, 0));
+        LinearLayout k = card(b, null);
+        navRow(k, LineIcon.PENCIL, "고치지 않기로 한 말", Typo.block.isEmpty() ? "아직 없어요. 고친 것을 지우기로 되돌리면 여기에 기억돼요"
+                : Typo.block.size() + "개 · 눌러서 보기·지우기", () -> { blockQuery = ""; open("typo_block"); });
         note(b, "비밀번호·이메일·주소 입력칸에서는 제안도 학습도 하지 않아요. 배운 내용은 이 폰 안에만 저장돼요 (이 앱은 인터넷 권한이 없어요).");
         note(b, "ㅠㅠ, ㅜㅜ 처럼 같은 키를 겹쳐 친 것은 건드리지 않아요.");
         note(b, "오타 제안과 맞춤법 제안이 같이 생기면 오타 제안을 먼저 보여줘요.");
         return (View) b.getParent();
+    }
+
+    // ================================================================== 고치지 않기로 한 말
+    private String blockQuery = "";
+
+    private View pageTypoBlock() {
+        Typo.load(a);
+        LinearLayout b = scaffold("고치지 않기로 한 말", "오타 교정을 지우기로 되돌렸던 말이에요. 여기 있는 말은 다시 고치지 않아요", true);
+        LinearLayout lc = card(b, null);
+        final EditText q = field("검색");
+        q.setText(blockQuery);
+        lc.addView(q, mlp(-1, -2, 8, 8, 8, 6));
+        final LinearLayout list = col();
+        lc.addView(list);
+        onText(q, () -> { blockQuery = q.getText().toString().trim(); fillBlock(list); });
+        fillBlock(list);
+        note(b, "지우면 그 말도 다시 오타 제안·자동 교정 대상이 돼요.");
+        if (!Typo.block.isEmpty())
+            b.addView(ghostBtn("모두 지우기", RED, () -> { Typo.block.clear(); Typo.saveData(a); show("typo_block", false); }), mlp(-1, -2, 0, 12, 0, 0));
+        return (View) b.getParent();
+    }
+
+    private void fillBlock(final LinearLayout list) {
+        list.removeAllViews();
+        List<String> ks = new ArrayList<>();
+        for (String w : Typo.block) if (blockQuery.isEmpty() || w.contains(blockQuery)) ks.add(w);
+        java.util.Collections.sort(ks);
+        if (ks.isEmpty()) list.addView(tv(Typo.block.isEmpty() ? "아직 없어요." : "'" + blockQuery + "' 에 맞는 말이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
+        for (final String w : ks)
+            list.addView(toggleRow(w, "되돌렸던 말 · 고치지 않음", "지우기", RED, () -> {
+                Typo.block.remove(w);
+                Typo.saveData(a);
+                fillBlock(list);
+            }));
     }
 
     // ================================================================== 맞춤법 목록

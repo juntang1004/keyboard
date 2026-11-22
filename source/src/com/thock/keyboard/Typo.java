@@ -53,6 +53,10 @@ public final class Typo {
     static final Map<String, Integer> words = new HashMap<>();
     static final Map<String, String> rules = new HashMap<>();
     static final Set<String> block = new HashSet<>();
+    /** 지우고 다시 친 것에서 모은 오타 쌍: "오타	원래 말" → 횟수 (설정 › 자동 학습한 오타) */
+    static final Map<String, Integer> learned = new HashMap<>();
+    /** 앞으로 무시: 같은 오타 쌍이 다시 모여도 목록에 올리지 않음 */
+    static final Set<String> ignored = new HashSet<>();
     private static int dirty;
 
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences("thock_ext", Context.MODE_PRIVATE); }
@@ -72,6 +76,10 @@ public final class Typo {
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); rules.put(k, o.getString(k)); } }
             s = p.getString("typo_block", null);
             if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) block.add(a.getString(i)); }
+            s = p.getString("typo_learned", null);
+            if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); learned.put(k, o.getInt(k)); } }
+            s = p.getString("typo_ignored", null);
+            if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) ignored.add(a.getString(i)); }
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "load", t); }
     }
 
@@ -90,9 +98,52 @@ public final class Typo {
             for (Map.Entry<String, String> e : rules.entrySet()) r.put(e.getKey(), e.getValue());
             JSONArray b = new JSONArray();
             for (String s : block) b.put(s);
-            sp(c).edit().putString("typo_words", w.toString()).putString("typo_rules", r.toString()).putString("typo_block", b.toString()).apply();
+            JSONObject l = new JSONObject();
+            for (Map.Entry<String, Integer> e : learned.entrySet()) l.put(e.getKey(), e.getValue());
+            JSONArray ig = new JSONArray();
+            for (String s : ignored) ig.put(s);
+            sp(c).edit().putString("typo_words", w.toString()).putString("typo_rules", r.toString()).putString("typo_block", b.toString())
+                    .putString("typo_learned", l.toString()).putString("typo_ignored", ig.toString()).apply();
             dirty = 0;
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "save", t); }
+    }
+
+    /** 오타 쌍 하나를 모은다 (무시했거나 이미 자동 교정에 있으면 넘어감) */
+    static void addPair(Context c, String typo, String right) {
+        if (typo == null || right == null || typo.equals(right)) return;
+        String k = typo + "	" + right;
+        if (ignored.contains(k) || right.equals(rules.get(typo))) return;
+        Integer n = learned.get(k);
+        learned.put(k, n == null ? 1 : n + 1);
+        while (learned.size() > 500) {                 // 가장 적게 모인 것부터 버린다
+            String min = null;
+            for (Map.Entry<String, Integer> e : learned.entrySet()) if (min == null || e.getValue() < learned.get(min)) min = e.getKey();
+            learned.remove(min);
+        }
+        if (c != null) saveData(c);
+    }
+
+    /** 홀로 선 자모(ㄱ~ㅣ)가 들어 있나: 이런 말은 맞는 말일 수 없어서 어절 어디에 있어도 고친다 */
+    static boolean hasLoneJamo(String s) {
+        for (int i = 0; i < s.length(); i++) { char ch = s.charAt(i); if (ch >= 0x3131 && ch <= 0x3163) return true; }
+        return false;
+    }
+
+    /**
+     * 자동 교정(고정 바꾸기) 찾기: 어절 = 오타 그대로, 어절이 오타로 시작 (고ㅓ일 → 과일),
+     * 또는 오타에 홀로 선 자모가 있으면 어절 안 어디서나 (학고ㅓ → 학과). 긴 오타 먼저.
+     * @return {바꿀 부분(어절 안 오타 시작부터 끝까지), 바뀐 글} 또는 null
+     */
+    static String[] matchRule(String word) {
+        String best = null; int at = -1;
+        for (String k : rules.keySet()) {
+            if (k.isEmpty() || (best != null && k.length() <= best.length())) continue;
+            int i = word.startsWith(k) ? 0 : hasLoneJamo(k) ? word.indexOf(k) : -1;
+            if (i >= 0) { best = k; at = i; }
+        }
+        if (best == null) return null;
+        String old = word.substring(at);
+        return new String[]{old, rules.get(best) + old.substring(best.length())};
     }
 
     static boolean known(String w) {
@@ -505,11 +556,18 @@ public final class Typo {
             if (!rules.isEmpty()) {
                 CharSequence cs = ic.getTextBeforeCursor(40, 0);
                 String tail = cs == null ? "" : cs.toString();
-                for (Map.Entry<String, String> e : rules.entrySet()) {
+                int ws = tail.length();
+                while (ws > 0 && !isBoundary(tail.charAt(ws - 1))) ws--;
+                String[] m = ws < tail.length() ? matchRule(tail.substring(ws)) : null;
+                if (m == null) for (Map.Entry<String, String> e : rules.entrySet()) {     // 띄어쓰기가 들어 있는 오타는 예전처럼 끝부분 그대로
                     String k = e.getKey();
-                    if (!tail.endsWith(k)) continue;
+                    if (k.indexOf(' ') < 0 || !tail.endsWith(k)) continue;
                     if (tail.length() > k.length() && !isBoundary(tail.charAt(tail.length() - k.length() - 1))) continue;
-                    replaceTail(h, k, e.getValue(), null);
+                    m = new String[]{k, e.getValue()};
+                    break;
+                }
+                if (m != null) {
+                    replaceTail(h, m[0], m[1], null);
                     clearPending();
                     return;
                 }

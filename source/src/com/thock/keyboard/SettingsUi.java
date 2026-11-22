@@ -171,6 +171,7 @@ public final class SettingsUi {
             case "typo": v = pageTypo(); break;
             case "typo_words": v = pageTypoWords(); break;
             case "typo_rules": v = pageTypoRules(); break;
+            case "typo_learned": v = pageTypoLearned(); break;
             case "typo_block": v = pageTypoBlock(); break;
             case "spell": v = pageSpell(); break;
             case "calib": v = pageCalib(); break;
@@ -1422,13 +1423,11 @@ public final class SettingsUi {
         divider(c);
         switchRow(c, "그 밖의 오타도 자동 교정", "아주 확실할 때만 띄어쓰기·마침표·엔터를 누르는 순간 스스로 바꿔요. 바로 지우기를 누르면 되돌아가요", Typo.auto, v -> { Typo.auto = v; Typo.saveFlags(a); });
         divider(c);
-        switchRow(c, "자동 학습", "내가 자주 치는 단어를 기억하고, 고친 터치를 터치 보정 기록에 더해요", Typo.learn, v -> { Typo.learn = v; Typo.saveFlags(a); });
-        int manual = 0;
-        for (int n : Typo.words.values()) if (n >= Typo.MANUAL) manual++;
-        LinearLayout m = card(b, "내 사전");
-        navRow(m, LineIcon.PENCIL, "내 단어", "직접 등록 " + manual + "개 · 자동 학습 " + (Typo.words.size() - manual) + "개", () -> { wordQuery = ""; open("typo_words"); });
+        switchRow(c, "자동 학습", "지우고 다시 친 글자로 오타를 모으고, 고친 터치를 터치 보정 기록에 더해요", Typo.learn, v -> { Typo.learn = v; Typo.saveFlags(a); });
+        LinearLayout m = card(b, "내 오타");
+        navRow(m, LineIcon.PENCIL, "자동 학습한 오타", Typo.learned.isEmpty() ? "지우고 다시 친 오타가 여기에 모여요" : Typo.learned.size() + "개 · 눌러서 자동 교정에 등록", () -> { learnQuery = ""; open("typo_learned"); });
         divider(m);
-        navRow(m, LineIcon.SWAP, "고정 바꾸기", Typo.rules.isEmpty() ? "오타 → 바꿀 말을 정해 두기" : Typo.rules.size() + "개", () -> { ruleQuery = ""; open("typo_rules"); });
+        navRow(m, LineIcon.SWAP, "자동 교정", Typo.rules.isEmpty() ? "오타 → 바꿀 말을 정해 두기" : Typo.rules.size() + "개", () -> { ruleQuery = ""; open("typo_rules"); });
         Spell.load(a);
         LinearLayout sc = card(b, "맞춤법");
         switchRow(sc, "맞춤법 제안", "자주 틀리는 맞춤법(되요 → 돼요, 몇일 → 며칠 등)을 툴바에 보여주고, 누르면 바꿔요. 천지인·나랏글·쿼티 모든 한글 자판에서 동작하고, 자동으로 바꾸지는 않아요",
@@ -1444,6 +1443,71 @@ public final class SettingsUi {
         note(b, "ㅠㅠ, ㅜㅜ 처럼 같은 키를 겹쳐 친 것은 건드리지 않아요.");
         note(b, "오타 제안과 맞춤법 제안이 같이 생기면 오타 제안을 먼저 보여줘요.");
         return (View) b.getParent();
+    }
+
+    // ================================================================== 자동 학습한 오타
+    private String learnQuery = "";
+
+    private View pageTypoLearned() {
+        Typo.load(a);
+        LinearLayout b = scaffold("자동 학습한 오타", "지우기로 고친 오타를 모았어요. 자동 교정에 등록하면 다음부터 바로 고쳐져요", true);
+        LinearLayout lc = card(b, null);
+        final EditText q = field("검색");
+        q.setText(learnQuery);
+        lc.addView(q, mlp(-1, -2, 8, 8, 8, 6));
+        final LinearLayout list = col();
+        lc.addView(list);
+        onText(q, () -> { learnQuery = q.getText().toString().trim(); fillLearned(list); });
+        fillLearned(list);
+        note(b, "예) 과를 치려다 고ㅓ가 써져서 지우기로 ㅓ를 지우고 ㅏ를 치면 \"고ㅓ → 과\"가 모여요. 지운 글자 중 바뀐 것이 원래 키와 바로 붙은 키일 때만 모아요.");
+        note(b, "앞으로 무시: 목록에서 사라지고, 같은 오타가 또 모여도 다시 올라오지 않아요. 자동 교정 등록: 자동 교정 목록으로 옮겨요.");
+        String diag = "이번에 키보드를 켠 뒤 (쿼티 한글) 지우기 " + FixLearn.nBackspace + "번 · 지우고 다시 친 것 " + FixLearn.nChecked + "번 확인 · " + FixLearn.nLearned + "번 배움"
+                + (FixLearn.lastSkip.isEmpty() ? "" : " · 최근 건너뛴 이유: " + FixLearn.lastSkip);
+        note(b, diag);
+        if (!Typo.ignored.isEmpty())
+            b.addView(ghostBtn("무시한 오타 " + Typo.ignored.size() + "개 다시 받기", ACCENT, () -> { Typo.ignored.clear(); Typo.saveData(a); show("typo_learned", false); }), mlp(-1, -2, 0, 12, 0, 0));
+        return (View) b.getParent();
+    }
+
+    private void fillLearned(final LinearLayout list) {
+        list.removeAllViews();
+        List<String> ks = new ArrayList<>();
+        for (String k : Typo.learned.keySet()) if (learnQuery.isEmpty() || k.contains(learnQuery)) ks.add(k);
+        java.util.Collections.sort(ks, (x, y) -> {
+            int cx = Typo.learned.get(x), cy = Typo.learned.get(y);
+            return cx != cy ? Integer.compare(cy, cx) : x.compareTo(y);
+        });
+        if (ks.isEmpty()) list.addView(tv(Typo.learned.isEmpty() ? "아직 없어요. 쿼티 한글로 치다가 지우기로 오타를 고치면 여기에 모여요." : "'" + learnQuery + "' 에 맞는 오타가 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
+        for (int i = 0; i < ks.size() && i < 200; i++) {
+            final String k = ks.get(i);
+            int tab = k.indexOf('\t');
+            if (tab < 0) continue;
+            final String typo = k.substring(0, tab), right = k.substring(tab + 1);
+            LinearLayout r = row();
+            r.setPadding(dp(14), dp(8), dp(6), dp(8));
+            LinearLayout t = col();
+            t.addView(tv(typo + "  →  " + right, 15, text, true));
+            t.addView(tv(Typo.learned.get(k) + "번 고침", 12.5f, sub, false), mlp(-1, -2, 0, 2, 0, 0));
+            r.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView ig = tv("앞으로 무시", 13, RED, true);
+            ig.setPadding(dp(8), dp(8), dp(8), dp(8));
+            ripple(ig, round(Color.TRANSPARENT, 12), 12);
+            ig.setOnClickListener(v -> { Typo.learned.remove(k); Typo.ignored.add(k); Typo.saveData(a); fillLearned(list); });
+            r.addView(ig);
+            TextView reg = tv("자동 교정 등록", 13, ACCENT, true);
+            reg.setPadding(dp(8), dp(8), dp(8), dp(8));
+            ripple(reg, round(Color.TRANSPARENT, 12), 12);
+            reg.setOnClickListener(v -> {
+                Typo.rules.put(typo, right);
+                Typo.learned.remove(k);
+                Typo.saveData(a);
+                Toast.makeText(a, typo + " → " + right + " 자동 교정에 등록했어요", Toast.LENGTH_SHORT).show();
+                fillLearned(list);
+            });
+            r.addView(reg);
+            list.addView(r);
+        }
+        if (ks.size() > 200) list.addView(tv("외 " + (ks.size() - 200) + "개 · 검색으로 찾아 주세요.", 13, sub, false), mlp(-1, -2, 14, 8, 14, 10));
     }
 
     // ================================================================== 고치지 않기로 한 말
@@ -1619,7 +1683,7 @@ public final class SettingsUi {
 
     private View pageTypoRules() {
         Typo.load(a);
-        LinearLayout b = scaffold("고정 바꾸기", "왼쪽 글자를 치고 띄어쓰기·마침표·엔터를 누르면 오른쪽 말로 바로 바뀌어요", true);
+        LinearLayout b = scaffold("자동 교정", "왼쪽 글자를 치고 띄어쓰기·마침표·엔터를 누르면 오른쪽 말로 바로 바뀌어요. 뒤에 글자가 더 붙어도 바뀌어요 (고ㅓ일 → 과일)", true);
         LinearLayout add = card(b, "추가");
         final EditText from = field("오타 (예: 장고규가기)");
         final EditText to = field("바꿀 말 (예: 장곡 가기)");
@@ -1641,7 +1705,8 @@ public final class SettingsUi {
         lc.addView(list);
         onText(q, () -> { ruleQuery = q.getText().toString().trim(); fillRules(list); });
         fillRules(list);
-        note(b, "고정 바꾸기는 오타 제안을 꺼도 동작해요. 바뀐 직후 지우기를 누르면 되돌아가요.");
+        note(b, "자동 교정은 오타 제안을 꺼도 동작해요. 바뀐 직후 지우기를 누르면 되돌아가요.");
+        note(b, "어절이 오타로 시작하면 뒤에 붙은 글자는 그대로 두고 바꿔요 (고ㅓ일 → 과일, 고ㅓ를 → 과를). 'ㅓ'처럼 홀로 선 자모가 든 오타는 어절 가운데에 있어도 바꿔요 (학고ㅓ → 학과).");
         return (View) b.getParent();
     }
 

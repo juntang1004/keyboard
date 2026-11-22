@@ -6,142 +6,201 @@ import java.util.List;
 /**
  * 평소 타자에서 "지우고 다시 친 것"으로 오타를 배운다 (쿼티 한글).
  *
- *  고ㅓ → 지우기 1번 → ㅏ  : 지운 키 [ㅓ] 와 다시 친 키 [ㅏ] 를 비교 → ㅏ 를 치려다 ㅓ 를 누름
- *  다짐 → 지우기 4번(ㅁ·ㅣ·ㅈ 하나씩, '다'는 한 번에) → ㄱㅏㅈㅣㅁ : [ㄷㅏㅈㅣㅁ] vs [ㄱㅏㅈㅣㅁ]
- *     → ㄱ 을 치려다 ㄷ 을 누름(오타), ㅏㅈㅣㅁ 은 제대로 누름
+ *  고ㅓ → 지우기 1번 → ㅏ  : 지운 자모 [ㅓ] 와 다시 친 자모 [ㅏ] → 오타 쌍 "고ㅓ → 과", 터치 "ㅏ 를 치려다 ㅓ"
+ *  다짐 → 지우기 4번 → ㄱㅏㅈㅣㅁ : [ㄷㅏㅈㅣㅁ] vs [ㄱㅏㅈㅣㅁ] → 오타 쌍 "다짐 → 가짐", 터치 "ㄱ 을 치려다 ㄷ", 나머지는 제대로 누름
  *
- * 몇 개의 키가 지워졌는지는 지우기 횟수가 아니라 지우기 전후 입력창의 글을 보고 알아낸다
- * (조합 중인 글자는 자모 하나씩, 다 만든 글자는 한 번에 지워지는 차이를 신경 쓰지 않아도 되게).
- * 다시 친 키가 지운 키 수만큼 모이면 자리별로 비교한다. 바뀐 키가 모두 원래 키와 상하좌우로 붙어 있을 때만 믿는다.
+ * 화면의 글만 본다: 지우기 직전 글(t0)과 다시 치기 시작할 때 글(t1)을 자모로 풀어서, t1 이 t0 의 앞부분이면
+ * 그 뒤가 지워진 자모다. 그 뒤 화면의 자모가 지운 만큼 다시 늘어나면 자리별로 비교한다.
+ * (조합 중인 글자는 자모 하나씩, 다 만든 글자는 한 번에 지워지는 차이와 상관없이 동작)
+ * 바뀐 자모가 모두 원래 키와 상하좌우로 맞닿은 키이고, 지운 것의 1/3 이하일 때만 믿는다.
  * 안드로이드 의존 없음 (JVM 테스트용).
  */
 public final class FixLearn {
-    /** 눌린 키 하나: id = 자리(기본 자모 또는 SP), ch = 입력된 글자, (dx, dy) = 눌린 키 가운데에서 벗어난 정도. 위치를 모르면 NaN */
+    /** 눌린 키 하나: id = 자리(기본 자모 또는 SP), ch = 입력된 자모, (dx, dy) = 눌린 키 가운데에서 벗어난 정도. 위치를 모르면 NaN */
     public static final class Key {
         final String id; final char ch; final float dx, dy;
         public Key(String id, char ch, float dx, float dy) { this.id = id; this.ch = ch; this.dx = dx; this.dy = dy; }
     }
 
-    /** 배운 결과 하나 */
+    /** 터치 학습 결과 하나 */
     public static final class Learned {
         public final String want, pressed; public final float dx, dy; public final boolean error;
         Learned(String want, String pressed, float dx, float dy, boolean error) { this.want = want; this.pressed = pressed; this.dx = dx; this.dy = dy; this.error = error; }
         @Override public String toString() { return error ? want + "←" + pressed : want; }
     }
 
-    private static final int MAX_LOG = 40;
-    private final List<Key> log = new ArrayList<>();
-    private final List<Key> deleted = new ArrayList<>(), retyped = new ArrayList<>();
+    /** 한 번 비교한 결과: 오타 쌍(없으면 null) + 터치 학습 */
+    public static final class Result {
+        public String typo, right;
+        public final List<Learned> touches = new ArrayList<>();
+        @Override public String toString() { return (typo == null ? "-" : typo + "→" + right) + " " + touches; }
+    }
+
+    // 진단 (설정 화면에 보여줌)
+    public static int nBackspace, nChecked, nLearned;
+    public static String lastSkip = "";
+
+    private static final int MAX_PRESS = 60;
+    private final List<Key> presses = new ArrayList<>();      // 최근에 누른 글자·스페이스 (화면 자모와 하나씩 맞물림)
+    private List<Key> pressAtDel;
     private int phase;          // 0 보통, 1 지우는 중, 2 다시 치는 중
     private String t0;
+    private List<Character> k0, base;
 
-    public void reset() { log.clear(); deleted.clear(); retyped.clear(); phase = 0; t0 = null; }
+    public void reset() { presses.clear(); phase = 0; t0 = null; k0 = base = null; pressAtDel = null; }
 
-    /** 입력창에서 읽어야 할 글 길이 */
-    public int need() { return logText(log.size()).length() + 4; }
+    /** 입력창에서 읽을 글 길이 */
+    public int need() { return 48; }
 
     /** 지우기가 적용되기 직전 (누를 때마다). before = 커서 앞 글 */
     public void beforeBackspace(CharSequence before) {
-        if (phase == 2) { log.addAll(retyped); retyped.clear(); deleted.clear(); phase = 0; }
-        if (phase == 0) {
-            if (before == null || log.isEmpty()) { reset(); return; }
-            t0 = before.toString();
-            phase = 1;
-        }
+        nBackspace++;
+        if (phase == 1) return;
+        phase = 0;
+        if (before == null) { skip("입력창 글을 못 읽음"); return; }
+        t0 = before.toString();
+        k0 = keys(t0);
+        pressAtDel = new ArrayList<>(presses);
+        phase = 1;
     }
 
     /** 글자·스페이스가 들어가기 직전. before = 커서 앞 글 */
     public void beforeKey(CharSequence before) {
         if (phase != 1) return;
         phase = 0;
-        int m = before == null ? -1 : remaining(t0, before.toString());
-        if (m < 0) { reset(); return; }
-        deleted.clear();
-        deleted.addAll(log.subList(m, log.size()));
-        while (log.size() > m) log.remove(log.size() - 1);
-        retyped.clear();
-        if (!deleted.isEmpty()) phase = 2;
+        if (before == null) { skip("입력창 글을 못 읽음"); return; }
+        List<Character> k1 = keys(before.toString());
+        if (k1.size() > k0.size() || !startsWith(k0, k1)) { skip("지운 뒤 화면이 앞 글과 안 맞음"); presses.clear(); return; }
+        if (k1.size() == k0.size()) return;
+        int d = k0.size() - k1.size();
+        for (int i = 0; i < d && !presses.isEmpty(); i++) presses.remove(presses.size() - 1);
+        base = k1;
+        phase = 2;
     }
 
-    /** 글자·스페이스가 들어간 뒤. 다시 친 키가 다 모였으면 배운 것을 돌려준다 (없으면 null) */
-    public List<Learned> key(Key k) {
-        if (!(k.ch == ' ' || Calib.isLetter(String.valueOf(k.ch)))) { reset(); return null; }   // 쌍자음(쉬프트) 등은 조합을 따라갈 수 없음
-        if (phase != 2) { add(k); return null; }
-        retyped.add(k);
-        if (retyped.size() < deleted.size()) return null;
-        List<Learned> out = compare(deleted, retyped);
-        for (Key r : retyped) add(r);
-        retyped.clear(); deleted.clear(); phase = 0;
-        return out;
+    /** 글자·스페이스가 들어간 뒤. after = 커서 앞 글. 비교할 만큼 모였으면 결과 (아니면 null) */
+    public Result key(Key k, CharSequence after) {
+        presses.add(k);
+        if (presses.size() > MAX_PRESS) presses.remove(0);
+        if (phase != 2) return null;
+        if (after == null) { phase = 0; skip("입력창 글을 못 읽음"); return null; }
+        List<Character> kn = keys(after.toString());
+        if (!startsWith(kn, base)) { phase = 0; skip("다시 치는 중에 화면이 바뀜"); return null; }
+        int d = k0.size() - base.size();
+        if (kn.size() - base.size() < d) return null;
+        phase = 0;
+        nChecked++;
+        List<Character> del = k0.subList(base.size(), k0.size()), re = kn.subList(base.size(), base.size() + d);
+        Result r = compare(k0, base.size(), del, re, tail(pressAtDel, d));
+        if (r == null) return null;
+        nLearned++;
+        lastSkip = "";
+        return r;
     }
 
-    private void add(Key k) {
-        log.add(k);
-        if (log.size() > MAX_LOG) {          // 앞쪽을 어절 단위로 버린다 (글자 조합이 바뀌지 않게)
-            int sp = -1;
-            for (int i = 0; i < log.size() - 1; i++) if (log.get(i).ch == ' ') { sp = i; break; }
-            if (sp < 0) log.clear(); else log.subList(0, sp + 1).clear();
-        }
-    }
+    private static void skip(String why) { lastSkip = why; }
 
-    // ---------------------------------------------------------------- 몇 개 남았나
-    private String logText(int m) {
-        List<String> ks = new ArrayList<>();
-        for (int i = 0; i < m; i++) ks.add(log.get(i).ch == ' ' ? Calib.SP : String.valueOf(log.get(i).ch));
-        return Calib.compose(ks).text.toString();
-    }
-
-    /** 지운 뒤 남은 키 수 (모르면 -1) */
-    int remaining(String before, String after) {
-        int n = log.size();
-        String all = logText(n);
-        if (!before.endsWith(all)) return -1;                    // 기록과 화면이 다름 (커서 이동 등)
-        String pre = before.substring(0, before.length() - all.length());
-        if (after.length() < pre.length() || !after.startsWith(pre)) return -1;   // 기록보다 앞까지 지움
-        String rest = after.substring(pre.length());
-        List<String> ks = new ArrayList<>();
-        for (Key k : log) ks.add(k.ch == ' ' ? Calib.SP : String.valueOf(k.ch));
-        Calib.Composed full = Calib.compose(ks);
-        for (int m = n - 1; m >= 0; m--) {
-            if (logText(m).equals(rest)) return m;              // 남은 키로 다시 조합한 모양
-            if (fixedText(full, ks, m).equals(rest)) return m;  // 글자 경계는 그대로, 마지막 글자만 덜 만든 모양
-        }
-        return -1;
-    }
-
-    private static String fixedText(Calib.Composed full, List<String> ks, int m) {
-        StringBuilder sb = new StringBuilder();
-        for (int c = 0; c < full.span.size(); c++) {
-            int[] sp = full.span.get(c);
-            if (sp[sp.length - 1] < m) { sb.append(full.text.charAt(c)); continue; }
-            if (sp[0] < m) sb.append(Calib.compose(ks.subList(sp[0], m)).text);
-            break;
-        }
-        return sb.toString();
+    private static List<Key> tail(List<Key> ps, int d) {
+        if (ps == null || ps.size() < d) return null;
+        return ps.subList(ps.size() - d, ps.size());
     }
 
     // ---------------------------------------------------------------- 비교
-    static List<Learned> compare(List<Key> del, List<Key> re) {
+    static Result compare(List<Character> k0, int at, List<Character> del, List<Character> re, List<Key> ps) {
         int n = del.size(), bad = 0;
-        List<Learned> out = new ArrayList<>();
         for (int i = 0; i < n; i++) {
-            Key d = del.get(i), r = re.get(i);
-            if (d.id.equals(r.id)) {
-                if (!Float.isNaN(d.dx)) out.add(new Learned(d.id, d.id, d.dx, d.dy, false));
-                continue;
-            }
-            float[] cd = center(d.id), cr = center(r.id);
-            if (cd == null || cr == null || !adjacent(d.id, r.id)) return null;   // 붙은 키가 아니면 다르게 고쳐 쓴 것
+            char a = del.get(i), b = re.get(i);
+            if (a == b) continue;
+            if (!adjacent(idOf(a), idOf(b))) { skip("바꾼 글자가 붙은 키가 아님 (" + a + "→" + b + ")"); return null; }
             bad++;
-            // 누르려던 키(r) 가운데에서 벗어난 정도로 바꾼다
-            if (!Float.isNaN(d.dx)) out.add(new Learned(r.id, d.id, d.dx + cd[0] - cr[0], d.dy + cd[1] - cr[1], true));
         }
-        if (bad == 0 || bad > Math.max(1, (n + 1) / 3)) return null;
+        if (bad == 0) { skip("지우고 그대로 다시 침"); return null; }
+        if (bad > Math.max(1, (n + 1) / 3)) { skip("바꾼 글자가 너무 많음"); return null; }
+        Result r = new Result();
+        // 터치: 누른 기록이 지운 자모와 맞을 때만
+        boolean psOk = ps != null && ps.size() == n;
+        for (int i = 0; psOk && i < n; i++) if (ps.get(i).ch != del.get(i)) psOk = false;
+        if (psOk) {
+            for (int i = 0; i < n; i++) {
+                Key p = ps.get(i);
+                if (Float.isNaN(p.dx)) continue;
+                char b = re.get(i);
+                if (p.ch == b) r.touches.add(new Learned(p.id, p.id, p.dx, p.dy, false));
+                else {
+                    String want = idOf(b);
+                    float[] cp = center(p.id), cw = center(want);
+                    if (cp != null && cw != null) r.touches.add(new Learned(want, p.id, p.dx + cp[0] - cw[0], p.dy + cp[1] - cw[1], true));
+                }
+            }
+        }
+        // 오타 쌍: 지운 곳이 들어 있는 어절 (스페이스를 넘어 지웠으면 만들지 않음)
+        if (!del.contains(' ') && !re.contains(' ')) {
+            int ws = at;
+            while (ws > 0 && !isBreak(k0.get(ws - 1))) ws--;
+            List<Character> wrong = new ArrayList<>(k0.subList(ws, k0.size()));
+            List<Character> right = new ArrayList<>(k0.subList(ws, at));
+            right.addAll(re);
+            String w = compose(wrong), g = compose(right);
+            if (!w.equals(g) && w.length() <= 20) { r.typo = w; r.right = g; }
+        }
+        return r;
+    }
+
+    private static boolean isBreak(char c) { return c == ' ' || c == '\n' || c == '.' || c == ',' || c == '?' || c == '!'; }
+
+    // ---------------------------------------------------------------- 자모
+    private static final String CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+    private static final String JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
+    private static final String JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+    private static final String[] COMB = {"ㅘㅗㅏ", "ㅙㅗㅐ", "ㅚㅗㅣ", "ㅝㅜㅓ", "ㅞㅜㅔ", "ㅟㅜㅣ", "ㅢㅡㅣ",
+            "ㄳㄱㅅ", "ㄵㄴㅈ", "ㄶㄴㅎ", "ㄺㄹㄱ", "ㄻㄹㅁ", "ㄼㄹㅂ", "ㄽㄹㅅ", "ㄾㄹㅌ", "ㄿㄹㅍ", "ㅀㄹㅎ", "ㅄㅂㅅ"};
+
+    private static void addJamo(List<Character> out, char c) {
+        for (String s : COMB) if (s.charAt(0) == c) { out.add(s.charAt(1)); out.add(s.charAt(2)); return; }
+        out.add(c);
+    }
+
+    /** 글 → 누른 자모 순서 (겹모음·겹받침은 두 번 누른 것으로). 한글이 아닌 글자는 그대로 */
+    static List<Character> keys(String s) {
+        List<Character> out = new ArrayList<>();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 0xAC00 && c <= 0xD7A3) {
+                int v = c - 0xAC00;
+                out.add(CHO.charAt(v / 588));
+                addJamo(out, JUNG.charAt(v % 588 / 28));
+                if (v % 28 != 0) addJamo(out, JONG.charAt(v % 28));
+            } else addJamo(out, c);
+        }
         return out;
+    }
+
+    static String compose(List<Character> ks) {
+        char[] a = new char[ks.size()];
+        for (int i = 0; i < a.length; i++) a[i] = ks.get(i);
+        return Typo.compose(a, 0, a.length);
+    }
+
+    private static boolean startsWith(List<Character> a, List<Character> p) {
+        if (p.size() > a.size()) return false;
+        for (int i = 0; i < p.size(); i++) if (!a.get(i).equals(p.get(i))) return false;
+        return true;
+    }
+
+    private static final String DOUBLE = "ㄲㄸㅃㅆㅉㅒㅖ", SINGLE = "ㄱㄷㅂㅅㅈㅐㅔ";
+
+    /** 자모 → 키 자리 id (쌍자음은 같은 자리) */
+    static String idOf(char c) {
+        if (c == ' ') return Calib.SP;
+        int i = DOUBLE.indexOf(c);
+        if (i >= 0) c = SINGLE.charAt(i);
+        String s = String.valueOf(c);
+        return Calib.isLetter(s) ? s : null;
     }
 
     /** 두 키 칸이 맞닿아 있나 (같은 줄 옆 칸, 윗줄·아랫줄에서 겹치는 칸) */
     static boolean adjacent(String a, String b) {
+        if (a == null || b == null) return false;
         Calib.Geo g = Calib.standard();
         int i = g.indexOf(a), j = g.indexOf(b);
         if (i < 0 || j < 0 || i == j) return false;
@@ -151,6 +210,7 @@ public final class FixLearn {
     }
 
     private static float[] center(String id) {
+        if (id == null) return null;
         Calib.Geo g = Calib.standard();
         int i = g.indexOf(id);
         if (i < 0) return null;

@@ -686,11 +686,29 @@ public final class Ext {
     // ---- 지우고 다시 친 것에서 오타 배우기 (Calib.fix): 쿼티 한글에서만
     private static boolean fixOn() { return svc != null && mode == M_KOQ && Typo.learn && Typo.usable(typoHost); }
 
+    /** 커서 앞 글. 입력창이 조합 중인 글자를 빼고 돌려주면 (일부 앱) 조합 중인 글자를 붙인다 */
     private static CharSequence fixText() {
         try {
             InputConnection ic = svc.getCurrentInputConnection();
-            return ic == null ? null : ic.getTextBeforeCursor(Calib.fix.need(), 0);
+            CharSequence b = ic == null ? null : ic.getTextBeforeCursor(Calib.fix.need(), 0);
+            if (b == null) return null;
+            String comp = composingNow();
+            if (!comp.isEmpty() && !b.toString().endsWith(comp)) return b.toString() + comp;
+            return b;
         } catch (Throwable t) { return null; }
+    }
+
+    /** 원본 앱의 쿼티 한글 조합기가 지금 조합 중인 글자 (없으면 "") */
+    private static String composingNow() {
+        try {
+            Field f = field(svc.getClass(), "composer");
+            Object hc = f == null ? null : f.get(svc);
+            if (hc != null && (Boolean) hc.getClass().getMethod("isComposing").invoke(hc)) {
+                String c = (String) hc.getClass().getMethod("composing").invoke(hc);
+                return c == null ? "" : c;
+            }
+        } catch (Throwable ignored) {}
+        return "";
     }
 
     /** 지우기가 적용되기 직전 */
@@ -714,7 +732,11 @@ public final class Ext {
             String id = code == K_SPACE ? Calib.SP : Calib.idOfLabel(label);
             if (ch == 0 || id == null) { Calib.fix.reset(); return; }
             boolean pos = id.equals(noteId);
-            Calib.addLearned(svc, Calib.fix.key(new FixLearn.Key(id, ch, pos ? noteDx : Float.NaN, pos ? noteDy : Float.NaN)));
+            FixLearn.Result r = Calib.fix.key(new FixLearn.Key(id, ch, pos ? noteDx : Float.NaN, pos ? noteDy : Float.NaN), fixText());
+            if (r != null) {
+                Calib.addLearned(svc, r.touches);
+                if (r.typo != null) { Typo.load(svc); Typo.addPair(svc, r.typo, r.right); }
+            }
         } catch (Throwable ignored) {}
     }
 

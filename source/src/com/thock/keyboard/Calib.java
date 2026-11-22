@@ -530,13 +530,15 @@ public final class Calib {
     /** FixLearn 이 찾은 것: 오타는 오타 교정 기록(F)으로 모두, 제대로 누른 것은 평소 기록(N)과 같은 비율로 */
     static void addLearned(Context c, List<FixLearn.Learned> ls) {
         if (ls == null) return;
+        boolean err = false;
         for (FixLearn.Learned l : ls) {
-            if (l.error) samples.add(new Sample(l.want, l.pressed, l.dx, l.dy, 'F'));
+            if (l.error) { samples.add(new Sample(l.want, l.pressed, l.dx, l.dy, 'F')); err = true; }
             else if (rnd.nextFloat() < normalRate(l.want)) samples.add(new Sample(l.want, l.want, l.dx, l.dy, 'N'));
             else continue;
             unsaved++;
         }
         settle(c, false);
+        if (err) { unsaved = 0; saveSamples(c); }        // 오타 기록은 바로 저장
     }
 
     /** 확정된 기록을 넣는다. finish = 입력을 마칠 때 (아직 덜 확정된 건 버림) */

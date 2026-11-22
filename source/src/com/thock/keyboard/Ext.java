@@ -683,6 +683,41 @@ public final class Ext {
         noteId = null;
     }
 
+    // ---- 지우고 다시 친 것에서 오타 배우기 (Calib.fix): 쿼티 한글에서만
+    private static boolean fixOn() { return svc != null && mode == M_KOQ && Typo.learn && Typo.usable(typoHost); }
+
+    private static CharSequence fixText() {
+        try {
+            InputConnection ic = svc.getCurrentInputConnection();
+            return ic == null ? null : ic.getTextBeforeCursor(Calib.fix.need(), 0);
+        } catch (Throwable t) { return null; }
+    }
+
+    /** 지우기가 적용되기 직전 */
+    private static void fixBeforeBackspace() {
+        try { if (fixOn()) Calib.fix.beforeBackspace(fixText()); else Calib.fix.reset(); } catch (Throwable ignored) {}
+    }
+
+    /** 키가 입력되기 직전 (글자·스페이스만 따라가고, 그 밖의 키면 처음부터) */
+    private static void fixBeforeKey(int code) {
+        try {
+            if (!fixOn() || (code != K_JAMO && code != K_SPACE)) { Calib.fix.reset(); return; }
+            Calib.fix.beforeKey(fixText());
+        } catch (Throwable ignored) {}
+    }
+
+    /** 키가 입력된 뒤 (calibNoteTyped 보다 먼저: noteId 가 남아 있을 때) */
+    private static void fixAfterKey(int code, String label) {
+        try {
+            if (!fixOn() || (code != K_JAMO && code != K_SPACE)) return;
+            char ch = code == K_SPACE ? ' ' : label == null || label.isEmpty() ? 0 : label.charAt(0);
+            String id = code == K_SPACE ? Calib.SP : Calib.idOfLabel(label);
+            if (ch == 0 || id == null) { Calib.fix.reset(); return; }
+            boolean pos = id.equals(noteId);
+            Calib.addLearned(svc, Calib.fix.key(new FixLearn.Key(id, ch, pos ? noteDx : Float.NaN, pos ? noteDy : Float.NaN)));
+        } catch (Throwable ignored) {}
+    }
+
     private static boolean typoBoundary(int code, String label) {
         return code == K_SPACE || code == K_ENTER || code == K_PUNCT || code == K_COMMA
                 || (code == K_TEXT && label != null && label.length() == 1 && ".,?!".indexOf(label.charAt(0)) >= 0);
@@ -2295,7 +2330,7 @@ public final class Ext {
         final float[] downY = {0};
         final CursorDrag drag = new CursorDrag();
         final Runnable[] repeat = new Runnable[1];
-        repeat[0] = () -> { cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat(); H.postDelayed(repeat[0], 45); };
+        repeat[0] = () -> { fixBeforeBackspace(); cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat(); H.postDelayed(repeat[0], 45); };
         final Runnable longPress = () -> {
             Typo.reset();
             Spell.beforeKey(spellHost, false);
@@ -2351,11 +2386,12 @@ public final class Ext {
                     typoTouch(kk, v);
                     calibNoteDown(kk, v);
                     if (code == K_BS) {
-                        if (Spell.undo(spellHost, svc)) Calib.discardPending();
-                        else if (Typo.undo(typoHost, svc)) Calib.discardPending();
+                        if (Spell.undo(spellHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
+                        else if (Typo.undo(typoHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else {          // 고친 직후의 지우기 = 되돌리기, 아니면 보통 지우기
                             Spell.beforeKey(spellHost, false);
                             calibNoteTyped(K_BS);
+                            fixBeforeBackspace();
                             cjPress(K_BS, null);
                             Typo.backspace();
                             if (mode == M_KOQ) Typo.schedule(typoHost); else Typo.reset();
@@ -2432,10 +2468,12 @@ public final class Ext {
                         Spell.beforeKey(spellHost, bd);
                         int seq = Typo.fixSeq;
                         typoBefore(code, kk.label);
+                        fixBeforeKey(code);
                         cjPress(code, kk.label);
                         // 맞춤법: 경계 문자가 실제로 들어간 뒤, 모든 한글 자판에서 (고정 바꾸기·오타 교정이 방금 바꿨으면 생략)
                         if (bd && svc != null) Spell.afterBoundary(spellHost, svc, Typo.fixSeq != seq);
                         typoAfter(code, kk.label);
+                        fixAfterKey(code, kk.label);
                         calibNoteTyped(code);
                     }
                     else if (code != K_BS && code != K_SHIFT) Typo.reset();

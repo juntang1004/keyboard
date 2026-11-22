@@ -524,6 +524,21 @@ public final class Calib {
     /** 오타를 고쳤을 때: 아직 확정 안 된 기록은 버린다 (틀린 터치가 섞였을 수 있음) */
     static void discardPending() { pend.clear(); }
 
+    /** 지우고 다시 친 것에서 배우기 (FixLearn) */
+    static final FixLearn fix = new FixLearn();
+
+    /** FixLearn 이 찾은 것: 오타는 오타 교정 기록(F)으로 모두, 제대로 누른 것은 평소 기록(N)과 같은 비율로 */
+    static void addLearned(Context c, List<FixLearn.Learned> ls) {
+        if (ls == null) return;
+        for (FixLearn.Learned l : ls) {
+            if (l.error) samples.add(new Sample(l.want, l.pressed, l.dx, l.dy, 'F'));
+            else if (rnd.nextFloat() < normalRate(l.want)) samples.add(new Sample(l.want, l.want, l.dx, l.dy, 'N'));
+            else continue;
+            unsaved++;
+        }
+        settle(c, false);
+    }
+
     /** 확정된 기록을 넣는다. finish = 입력을 마칠 때 (아직 덜 확정된 건 버림) */
     static void settle(Context c, boolean finish) {
         while (!pend.isEmpty() && pend.get(0).seq <= keySeq - SETTLE) { samples.add(pend.remove(0).s); unsaved++; }

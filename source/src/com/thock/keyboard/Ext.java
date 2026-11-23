@@ -1054,7 +1054,6 @@ public final class Ext {
     private static final View[] emojiCatBtns = new View[Emoji.CATS];
     private static final List<int[]> emojiRows = new ArrayList<>();     // {분류, 시작 칸(-1 = 제목 줄)}
     private static final List<List<String>> emojiCatItems = new ArrayList<>();
-    private static final int[] emojiCatRow = new int[Emoji.CATS];
     private static int emojiCols = 8, emojiCurCat = -1;
     private static boolean emojiSearch;
     private static int emojiPrevMode = -1;
@@ -1069,12 +1068,10 @@ public final class Ext {
         if (was) return;
         if (!Emoji.ready()) Emoji.load(svc.getApplicationContext());
         Emoji.loadRecent(svc);
-        fillEmojiRows();
+        loadEmojiCats();
         sizeEmojiPanel();
         emojiPanel.setVisibility(View.VISIBLE);
-        int start = Emoji.recent.isEmpty() ? 1 : 0;
-        emojiList.setSelection(emojiCatRow[start]);
-        markEmojiCat(start);
+        jumpEmojiCat(Emoji.recent.isEmpty() ? 1 : 0);
     }
 
     /** 이모지 화면은 지금 자판과 같은 높이로 (화면 전체로 커지지 않게) */
@@ -1200,12 +1197,6 @@ public final class Ext {
         emojiList.setVerticalScrollBarEnabled(false);
         emojiList.setOverScrollMode(View.OVER_SCROLL_NEVER);
         emojiList.setAdapter(emojiAdapter);
-        emojiList.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
-            public void onScrollStateChanged(android.widget.AbsListView v, int st) {}
-            public void onScroll(android.widget.AbsListView v, int first, int n, int total) {
-                if (first >= 0 && first < emojiRows.size()) markEmojiCat(emojiRows.get(first)[0]);
-            }
-        });
         body.addView(emojiList, new FrameLayout.LayoutParams(-1, -1));
         View bs = iconBtn(c, LineIcon.BKSP, () -> cjPress(K_BS, null), true);
         GradientDrawable bd = new GradientDrawable();
@@ -1220,14 +1211,16 @@ public final class Ext {
         return p;
     }
 
-    private static void fillEmojiRows() {
-        emojiRows.clear();
+    private static void loadEmojiCats() {
         emojiCatItems.clear();
-        for (int cat = 0; cat < Emoji.CATS; cat++) {
-            List<String> items = Emoji.ofCat(cat);
-            emojiCatItems.add(items);
-            emojiCatRow[cat] = emojiRows.size();
-            if (items.isEmpty() && cat != 0) continue;
+        for (int cat = 0; cat < Emoji.CATS; cat++) emojiCatItems.add(Emoji.ofCat(cat));
+    }
+
+    /** 격자에는 한 분류만: 아래로 스크롤해도 그 분류 끝에서 멈춘다 (다른 분류는 위 줄을 누르거나 좌우로 밀어서) */
+    private static void fillEmojiRows(int cat) {
+        emojiRows.clear();
+        if (cat >= 0 && cat < emojiCatItems.size()) {
+            List<String> items = emojiCatItems.get(cat);
             emojiRows.add(new int[]{cat, -1});
             if (items.isEmpty()) emojiRows.add(new int[]{cat, -2});        // 최근 사용이 비었을 때 안내 줄
             for (int i = 0; i < items.size(); i += emojiCols) emojiRows.add(new int[]{cat, i});
@@ -1237,12 +1230,13 @@ public final class Ext {
 
     private static void jumpEmojiCat(int cat) {
         if (emojiList == null) return;
-        emojiList.setSelection(emojiCatRow[cat]);
+        if (emojiCatItems.isEmpty()) loadEmojiCats();
+        fillEmojiRows(cat);
+        emojiList.setSelection(0);
         markEmojiCat(cat);
     }
 
     private static void markEmojiCat(int cat) {
-        if (cat == emojiCurCat) return;
         emojiCurCat = cat;
         for (int i = 0; i < Emoji.CATS; i++) if (emojiCatBtns[i] != null) emojiCatBtns[i].setSelected(i == cat);
     }
@@ -1338,7 +1332,8 @@ public final class Ext {
         if (emojiPrevMode >= 0) { mode = emojiPrevMode; emojiPrevMode = -1; shiftState = 0; rebuildKeys(); }
         if (backToPanel && emojiPanel != null) {
             Emoji.loadRecent(svc);
-            fillEmojiRows();
+            loadEmojiCats();
+            jumpEmojiCat(Math.max(0, emojiCurCat));
             sizeEmojiPanel();
             emojiPanel.setVisibility(View.VISIBLE);
         }

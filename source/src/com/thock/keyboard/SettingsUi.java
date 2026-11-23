@@ -863,7 +863,7 @@ public final class SettingsUi {
         k.addView(tv(desc, 13, sub, false), mlp(-1, -2, 14, 0, 14, 10));
 
         LinearLayout s = card(b, "키보드 크기");
-        slider(s, "키 높이", 80, 130, prefs.getHeightPct(), "%", prefs::setHeightPct, null);
+        slider(s, "키 높이", 80, 150, prefs.getHeightPct(), "%", prefs::setHeightPct, null);
         slider(s, "키 너비", 50, Prefs.WIDTH_MAX, prefs.getWidthPct(), "%", prefs::setWidthPct, null);
         slider(s, "아래 여백", 0, 30, ext().getInt("bottom_pad", 8), "dp", v -> ext().edit().putInt("bottom_pad", v).apply(), null);
         s.addView(tv("슬라이드로 0~30dp까지 조절해요. 8dp가 삼성 키보드와 같아요.", 13, sub, false), mlp(-1, -2, 14, 0, 14, 10));
@@ -1487,9 +1487,40 @@ public final class SettingsUi {
         String diag = "이번에 키보드를 켠 뒤 (쿼티 한글) 지우기 " + FixLearn.nBackspace + "번 · 지우고 다시 친 것 " + FixLearn.nChecked + "번 확인 · " + FixLearn.nLearned + "번 배움"
                 + (FixLearn.lastSkip.isEmpty() ? "" : " · 최근 건너뛴 이유: " + FixLearn.lastSkip);
         note(b, diag);
-        if (!Typo.ignored.isEmpty())
-            b.addView(ghostBtn("무시한 오타 " + Typo.ignored.size() + "개 다시 받기", ACCENT, () -> { Typo.ignored.clear(); Typo.saveData(a); show("typo_learned", false); }), mlp(-1, -2, 0, 12, 0, 0));
+        if (!Typo.ignored.isEmpty()) {
+            // 무시한 오타 보기: 누르면 아래로 목록이 펼쳐지고, 항목마다 [무시 목록에서 빼기]
+            final LinearLayout ig = col();
+            final TextView[] tog = new TextView[1];
+            tog[0] = ghostBtn("무시한 오타 보기 (" + Typo.ignored.size() + "개)", ACCENT, () -> {
+                ignoredOpen = !ignoredOpen;
+                fillIgnored(ig, tog[0]);
+            });
+            b.addView(tog[0], mlp(-1, -2, 0, 12, 0, 0));
+            b.addView(ig);
+            fillIgnored(ig, tog[0]);
+        }
         return (View) b.getParent();
+    }
+
+    private boolean ignoredOpen;
+
+    private void fillIgnored(final LinearLayout box, final TextView tog) {
+        box.removeAllViews();
+        tog.setText((ignoredOpen ? "무시한 오타 접기" : "무시한 오타 보기") + " (" + Typo.ignored.size() + "개)");
+        if (!ignoredOpen) return;
+        LinearLayout c = card(box, "무시한 오타");
+        List<String> ks = new ArrayList<>(Typo.ignored);
+        java.util.Collections.sort(ks);
+        if (ks.isEmpty()) c.addView(tv("무시한 오타가 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
+        for (final String k : ks) {
+            int t = k.indexOf('\t');
+            String title = t < 0 ? k : k.substring(0, t) + "  →  " + k.substring(t + 1);
+            c.addView(toggleRow(title, "앞으로 모으지 않음", "무시 목록에서 빼기", ACCENT, () -> {
+                Typo.ignored.remove(k);
+                Typo.saveData(a);
+                fillIgnored(box, tog);
+            }));
+        }
     }
 
     private void fillLearned(final LinearLayout list) {

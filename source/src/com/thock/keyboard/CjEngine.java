@@ -44,7 +44,11 @@ public final class CjEngine {
 
     /** Reopen one already committed Hangul syllable. */
     public boolean reopen(char syllable) {
-        if (syllable < 0xAC00 || syllable > 0xD7A3 || isComposing()) return false;
+        if (isComposing()) return false;
+        if (CHO.indexOf(syllable) >= 0) {
+            cho = syllable; lastKey = -1; snap = null; return true;
+        }
+        if (syllable < 0xAC00 || syllable > 0xD7A3) return false;
         int n = syllable - 0xAC00;
         char v = JUNG.charAt((n / 28) % 21);
         String strokes = null;

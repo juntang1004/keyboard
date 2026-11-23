@@ -1956,16 +1956,21 @@ public final class Ext {
             CharSequence prev = ic.getTextBeforeCursor(1, 0);
             if (cursor < 1 || prev == null || prev.length() != 1) return;
             char syllable = prev.charAt(0);
-            if (syllable < 0xAC00 || syllable > 0xD7A3) return;
+            boolean loneInitial = CjEngine.CHO.indexOf(syllable) >= 0;
+            if (!loneInitial && (syllable < 0xAC00 || syllable > 0xD7A3)) return;
             if (q) {
                 Field f = field(svc.getClass(), "composer");
                 hc = f == null ? null : f.get(svc);
                 if (hc == null) return;
                 Method input = hc.getClass().getMethod("input", char.class);
-                int z = syllable - 0xAC00, j = (z / 28) % 21, t = z % 28;
-                String v = new String[]{"ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅗㅏ","ㅗㅐ","ㅗㅣ","ㅛ","ㅜ","ㅜㅓ","ㅜㅔ","ㅜㅣ","ㅠ","ㅡ","ㅡㅣ","ㅣ"}[j];
-                String[] finals = {"","ㄱ","ㄲ","ㄱㅅ","ㄴ","ㄴㅈ","ㄴㅎ","ㄷ","ㄹ","ㄹㄱ","ㄹㅁ","ㄹㅂ","ㄹㅅ","ㄹㅌ","ㄹㅍ","ㄹㅎ","ㅁ","ㅂ","ㅂㅅ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"};
-                String keys = "" + CjEngine.CHO.charAt(z / 588) + v + finals[t];
+                String keys;
+                if (loneInitial) keys = String.valueOf(syllable);
+                else {
+                    int z = syllable - 0xAC00, j = (z / 28) % 21, t = z % 28;
+                    String v = new String[]{"ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅗㅏ","ㅗㅐ","ㅗㅣ","ㅛ","ㅜ","ㅜㅓ","ㅜㅔ","ㅜㅣ","ㅠ","ㅡ","ㅡㅣ","ㅣ"}[j];
+                    String[] finals = {"","ㄱ","ㄲ","ㄱㅅ","ㄴ","ㄴㅈ","ㄴㅎ","ㄷ","ㄹ","ㄹㄱ","ㄹㅁ","ㄹㅂ","ㄹㅅ","ㄹㅌ","ㄹㅍ","ㄹㅎ","ㅁ","ㅂ","ㅂㅅ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"};
+                    keys = "" + CjEngine.CHO.charAt(z / 588) + v + finals[t];
+                }
                 for (int x = 0; x < keys.length(); x++) input.invoke(hc, keys.charAt(x));
                 if (!String.valueOf(syllable).equals(hc.getClass().getMethod("composing").invoke(hc))) {
                     hc.getClass().getMethod("reset").invoke(hc); return;
@@ -2751,12 +2756,12 @@ public final class Ext {
             if (emojiSearch) { emojiSearchKey(K_BS, null); H.postDelayed(repeat[0], 45); return; }
             long held = android.os.SystemClock.uptimeMillis() - deleteStarted[0];
             int stage = opt("fast_delete") ? FastDelete.stage(held) : 0;
-            if (stage >= 2) {
+            if (stage >= 3) {
                 InputConnection ic = svc == null ? null : svc.getCurrentInputConnection();
                 if (ic == null) return;
                 finishComposing();
                 Calib.fix.reset(); Calib.discardPending(); Typo.reset(); Spell.beforeKey(spellHost, false);
-                if (stage == 3) {
+                if (stage == 6) {
                     if (!deleteAllDone[0]) {
                         deleteAllDone[0] = true;
                         if (ic.performContextMenuAction(android.R.id.selectAll)) ic.commitText("", 1);
@@ -2770,13 +2775,15 @@ public final class Ext {
                     int n = FastDelete.precedingWordLength(before);
                     if (n > 0) ic.deleteSurroundingText(n, 0);
                 }
-                H.postDelayed(repeat[0], Math.min(300L, Math.max(1L, 5000L - held)));
+                long next = (stage + 1L) * 2000L - held;
+                H.postDelayed(repeat[0], Math.min(FastDelete.delayMillis(stage), Math.max(1L, next)));
             } else {
                 fixBeforeBackspace();
                 finishComposing(); // long press removes a whole composed syllable
                 cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat();
-                long next = stage == 0 ? 1000L - held : 3000L - held;
-                H.postDelayed(repeat[0], Math.min(stage == 0 ? 120L : 65L, Math.max(1L, next)));
+                long next = (stage + 1L) * 2000L - held;
+                long delay = FastDelete.delayMillis(stage);
+                H.postDelayed(repeat[0], opt("fast_delete") ? Math.min(delay, Math.max(1L, next)) : delay);
             }
         };
         final Runnable longPress = () -> {

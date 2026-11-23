@@ -1601,10 +1601,12 @@ public final class SettingsUi {
             chips.addView(chipBtn(c, !spellOffOnly && c.equals(spellCat), () -> { spellOffOnly = false; spellCat = c; show("spell", false); }), mlp(-2, -2, 0, 0, 8, 0));
         hs.addView(chips);
         lc.addView(hs, mlp(-1, -2, 8, 2, 8, 8));
+        spellCount = sortBar(pg, spellSort, v -> { spellSort = v; show("spell", false); });
         final ScrollView sv = new ScrollView(a);
         sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout inner = col();
         LinearLayout listCard = card(inner, null);
+        ((LinearLayout.LayoutParams) listCard.getLayoutParams()).topMargin = 0;
         final LinearLayout list = col();
         listCard.addView(list);
         note(inner, "바꾼 직후 지우기를 누르면 되돌아가고, 그 항목은 \"되돌려서 꺼짐\"이 돼요. 여기서 다시 켤 수 있어요.");
@@ -1635,12 +1637,18 @@ public final class SettingsUi {
             for (int i = 0; !hit && i < it.wrong.length; i++) hit = it.wrong[i].contains(spellQuery) || it.right[i].contains(spellQuery);
             if (hit) ks.add(it);
         }
+        java.util.Collections.sort(ks, (x, y) -> sortCmp(spellSort, Spell.hitsOf(x), Spell.hitsOf(y), x.disp, y.disp));
+        if (spellCount != null) {
+            int total = 0;
+            for (Spell.Item it : Spell.items) if ((!spellOffOnly || !Spell.enabled(it)) && (spellCat == null || spellCat.equals(it.cat))) total++;
+            spellCount.setText("총 " + total + "개 등록" + (ks.size() != total ? " · 찾은 것 " + ks.size() + "개" : ""));
+        }
         if (ks.isEmpty()) list.addView(tv(Spell.items.isEmpty() ? "목록을 불러오지 못했어요." : spellOffOnly && spellQuery.isEmpty() ? "꺼진 항목이 없어요." : "'" + spellQuery + "' 에 맞는 항목이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
         for (int i = 0; i < ks.size() && i < 200; i++) {
             final Spell.Item it = ks.get(i);
             final boolean en = Spell.enabled(it);
             String st = en ? "켜짐" : Spell.block.contains(it.id) ? "되돌려서 꺼짐" : "꺼짐";
-            String desc = st + (it.wrong.length > 1 ? " · 형태 " + it.wrong.length + "개" : "");
+            String desc = st + " · " + Spell.hitsOf(it) + "번 고침" + (it.wrong.length > 1 ? " · 형태 " + it.wrong.length + "개" : "");
             list.addView(toggleRow(it.disp, desc, en ? "끄기" : "켜기", en ? RED : ACCENT, () -> {
                 if (en) Spell.off.add(it.id); else { Spell.off.remove(it.id); Spell.block.remove(it.id); }
                 Spell.save(a);
@@ -1733,7 +1741,28 @@ public final class SettingsUi {
         return r;
     }
 
-    private int ruleSort;        // 0 가나다, 1 많이 고친 순, 2 적게 고친 순
+    /** 정렬 상태: 0 고친 횟수 많은 순(기본), 1 적은 순, 2 가나다, 3 가나다 거꾸로 */
+    private int ruleSort, spellSort;
+
+    /** "총 N개" + [고친 횟수 ▼/▲] [가나다 ▲/▼]. 같은 버튼을 다시 누르면 방향이 바뀜 */
+    private TextView sortBar(LinearLayout parent, int state, java.util.function.IntConsumer set) {
+        LinearLayout hr = row();
+        hr.setGravity(Gravity.CENTER_VERTICAL);
+        TextView count = tv("", 13, sub, true);
+        hr.addView(count, new LinearLayout.LayoutParams(0, -2, 1f));
+        boolean byHits = state == 0 || state == 1;
+        hr.addView(chipBtn("고친 횟수 " + (state == 1 ? "▲" : "▼"), byHits, () -> set.accept(state == 0 ? 1 : 0)), mlp(-2, -2, 0, 0, 6, 0));
+        hr.addView(chipBtn("가나다 " + (state == 3 ? "▼" : "▲"), !byHits, () -> set.accept(state == 2 ? 3 : 2)));
+        parent.addView(hr, mlp(-1, -2, 8, 12, 0, 8));
+        return count;
+    }
+
+    private static int sortCmp(int state, int hx, int hy, String nx, String ny) {
+        if (state == 0 && hx != hy) return Integer.compare(hy, hx);
+        if (state == 1 && hx != hy) return Integer.compare(hx, hy);
+        return state == 3 ? ny.compareTo(nx) : nx.compareTo(ny);
+    }
+
 
     private View pageTypoRules() {
         Typo.load(a);
@@ -1759,13 +1788,8 @@ public final class SettingsUi {
         ok.setPadding(dp(16), dp(10), dp(16), dp(10));
         ar.addView(ok, new LinearLayout.LayoutParams(-2, -2));
         add.addView(ar);
-        // 목록 제목 + 정렬
-        LinearLayout hr = row();
-        hr.setGravity(Gravity.CENTER_VERTICAL);
-        hr.addView(tv("목록 " + Typo.rules.size() + "개", 13, sub, true), new LinearLayout.LayoutParams(0, -2, 1f));
-        hr.addView(chipBtn("많이 고친 순", ruleSort == 1, () -> { ruleSort = ruleSort == 1 ? 0 : 1; show("typo_rules", false); }), mlp(-2, -2, 0, 0, 6, 0));
-        hr.addView(chipBtn("적게 고친 순", ruleSort == 2, () -> { ruleSort = ruleSort == 2 ? 0 : 2; show("typo_rules", false); }));
-        b.addView(hr, mlp(-1, -2, 8, 18, 0, 8));
+        // 총 개수 + 정렬
+        ruleCount = sortBar(b, ruleSort, v -> { ruleSort = v; show("typo_rules", false); });
         LinearLayout lc = card(b, null);
         ((LinearLayout.LayoutParams) lc.getLayoutParams()).topMargin = 0;
         final EditText q = field("검색");
@@ -1777,15 +1801,16 @@ public final class SettingsUi {
         return (View) b.getParent();
     }
 
+    private TextView ruleCount, spellCount;
+
     private void fillRules(final LinearLayout list) {
         list.removeAllViews();
         List<String> ks = new ArrayList<>();
         for (String k : Typo.rules.keySet()) if (ruleQuery.isEmpty() || k.contains(ruleQuery) || Typo.rules.get(k).contains(ruleQuery)) ks.add(k);
         java.util.Collections.sort(ks);
-        if (ruleSort != 0) java.util.Collections.sort(ks, (x, y) -> {        // 고친 횟수 순 (같으면 가나다)
-            int hx = Typo.ruleHits.containsKey(x) ? Typo.ruleHits.get(x) : 0, hy = Typo.ruleHits.containsKey(y) ? Typo.ruleHits.get(y) : 0;
-            return hx != hy ? (ruleSort == 1 ? Integer.compare(hy, hx) : Integer.compare(hx, hy)) : x.compareTo(y);
-        });
+        java.util.Collections.sort(ks, (x, y) -> sortCmp(ruleSort,
+                Typo.ruleHits.containsKey(x) ? Typo.ruleHits.get(x) : 0, Typo.ruleHits.containsKey(y) ? Typo.ruleHits.get(y) : 0, x, y));
+        if (ruleCount != null) ruleCount.setText("총 " + Typo.rules.size() + "개 등록" + (ks.size() != Typo.rules.size() ? " · 찾은 것 " + ks.size() + "개" : ""));
         if (ks.isEmpty()) list.addView(tv(ruleQuery.isEmpty() ? "아직 없어요." : "'" + ruleQuery + "' 에 맞는 것이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
         for (int i = 0; i < ks.size() && i < 200; i++) {
             final String k = ks.get(i);

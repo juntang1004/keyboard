@@ -89,6 +89,8 @@ public final class Spell {
                 on = p.getBoolean("spell_on", true);
                 readSet(p.getString("spell_off", null), off);
                 readSet(p.getString("spell_block", null), block);
+                String hs = p.getString("spell_hits", null);
+                if (hs != null) { org.json.JSONObject o = new org.json.JSONObject(hs); for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); hits.put(k, o.getInt(k)); } }
             } catch (Throwable t) { android.util.Log.w("ThockSpell", "prefs", t); }
         }
         if (!listLoaded) {
@@ -103,12 +105,19 @@ public final class Spell {
         for (int i = 0; i < a.length(); i++) into.add(a.getString(i));
     }
 
+    /** 항목마다 툴바 칩을 눌러 실제로 고친 횟수 (설정 › 맞춤법 목록에서 정렬·표시) */
+    static final java.util.Map<String, Integer> hits = new java.util.HashMap<>();
+
+    static int hitsOf(Item it) { Integer n = hits.get(it.id); return n == null ? 0 : n; }
+
     static void save(Context c) {
         try {
             JSONArray o = new JSONArray(), b = new JSONArray();
             for (String s : off) o.put(s);
             for (String s : block) b.put(s);
-            sp(c).edit().putBoolean("spell_on", on).putString("spell_off", o.toString()).putString("spell_block", b.toString()).apply();
+            org.json.JSONObject h = new org.json.JSONObject();
+            for (java.util.Map.Entry<String, Integer> e : hits.entrySet()) h.put(e.getKey(), e.getValue());
+            sp(c).edit().putBoolean("spell_on", on).putString("spell_off", o.toString()).putString("spell_block", b.toString()).putString("spell_hits", h.toString()).apply();
         } catch (Throwable t) { android.util.Log.w("ThockSpell", "save", t); }
     }
 
@@ -290,6 +299,10 @@ public final class Spell {
             Done d = new Done();
             d.oldText = g.oldText; d.newText = g.newText; d.ids = g.ids; d.time = now();
             done = d;
+            if (g.ids != null && c != null) {          // 고친 횟수 (되돌려도 빼지 않음)
+                for (String id : g.ids) { Integer n = hits.get(id); hits.put(id, n == null ? 1 : n + 1); }
+                save(c);
+            }
         } catch (Throwable t) { android.util.Log.w("ThockSpell", "apply", t); }
     }
 

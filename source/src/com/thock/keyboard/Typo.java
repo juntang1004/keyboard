@@ -76,8 +76,7 @@ public final class Typo {
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); words.put(k, o.getInt(k)); } }
             s = p.getString("typo_rules", null);
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); rules.put(k, o.getString(k)); } }
-            s = p.getString("typo_block", null);
-            if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) block.add(a.getString(i)); }
+            // "고치지 않기로 한 말"은 자동 교정과 겹쳐서 없앰 (2026-11-23): 예전 기록은 읽지 않고, 저장할 때 비운다
             s = p.getString("typo_learned", null);
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); learned.put(k, o.getInt(k)); } }
             s = p.getString("typo_rule_hits", null);
@@ -526,7 +525,6 @@ public final class Typo {
             int re = i + 1;
             while (re < len && keys[re] != ' ') re++;
             String oldRun = compose(keys, rs, re);
-            if (block.contains(oldRun)) continue;
             char keep = keys[i];
             keys[i] = alt;
             String cand = compose(keys, 0, len);
@@ -702,7 +700,6 @@ public final class Typo {
             ic.commitText(d.oldText + (extra == 1 ? b.substring(b.length() - 1) : ""), 1);
             ic.endBatchEdit();
             log.clear();
-            if (d.blockKey != null) { block.add(d.blockKey); saveData(c); }   // 다시는 이렇게 고치지 않는다
             if (d.ruleKey != null) { Integer hc = ruleHits.get(d.ruleKey); if (hc != null && hc > 0) ruleHits.put(d.ruleKey, hc - 1); saveData(c); }
             return true;
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "undo", t); return false; }

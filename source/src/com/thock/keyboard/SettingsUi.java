@@ -172,7 +172,6 @@ public final class SettingsUi {
             case "typo_words": v = pageTypoWords(); break;
             case "typo_rules": v = pageTypoRules(); break;
             case "typo_learned": v = pageTypoLearned(); break;
-            case "typo_block": v = pageTypoBlock(); break;
             case "spell": v = pageSpell(); break;
             case "calib": v = pageCalib(); break;
             case "calib_train": v = pageCalibTrain(); break;
@@ -633,7 +632,7 @@ public final class SettingsUi {
                 + " · 맞춤법 " + (Spell.on ? "켜짐" : "꺼짐"), () -> open("typo"));
         divider(m);
         Calib.load(a);
-        navRow(m, LineIcon.PENCIL, "오타 학습 · 터치 보정", Calib.isOn(a) ? "보정 켜짐 · 기록 " + Calib.samples.size() + "번"
+        navRow(m, LineIcon.ROBOT, "터치 범위 자동 학습 · 수동 보정", Calib.isOn(a) ? "보정 켜짐 · 기록 " + Calib.samples.size() + "번"
                 : Calib.samples.isEmpty() ? "따라 쓰기로 내 터치 습관 학습" : "보정 꺼짐 · 기록 " + Calib.samples.size() + "번", () -> open("calib"));
         divider(m);
         navRow(m, LineIcon.THEME, "테마", prefs.getLightTheme() ? "흰색" : "어두운 색", () -> open("theme"));
@@ -1003,7 +1002,7 @@ public final class SettingsUi {
 
     private View pageCalib() {
         Calib.load(a);
-        LinearLayout b = scaffold("오타 학습 · 터치 보정", "쿼티 자판(한글·영어)에서 내 손가락 습관에 맞게 키 인식 범위를 옮겨요", true);
+        LinearLayout b = scaffold("터치 범위 자동 학습 · 수동 보정", "쿼티 자판(한글·영어)에서 내 손가락 습관에 맞게 키 인식 범위를 옮겨요", true);
         LinearLayout c = card(b, null);
         switchRow(c, "터치 보정 사용", "학습했거나 직접 맞춘 범위로 키를 인식해요", Calib.isOn(a), on -> Calib.setOn(a, on));
         int n = Calib.samples.size(), typos = 0;
@@ -1435,10 +1434,7 @@ public final class SettingsUi {
         divider(sc);
         int spellOff = 0;
         for (Spell.Item it : Spell.items) if (!Spell.enabled(it)) spellOff++;
-        navRow(sc, LineIcon.SWAP, "맞춤법 목록", Spell.items.size() + "개" + (spellOff > 0 ? " · 꺼짐 " + spellOff + "개" : ""), () -> { spellQuery = ""; spellOffOnly = false; open("spell"); });
-        LinearLayout k = card(b, null);
-        navRow(k, LineIcon.PENCIL, "고치지 않기로 한 말", Typo.block.isEmpty() ? "아직 없어요. 고친 것을 지우기로 되돌리면 여기에 기억돼요"
-                : Typo.block.size() + "개 · 눌러서 보기·지우기", () -> { blockQuery = ""; open("typo_block"); });
+        navRow(sc, LineIcon.SWAP, "맞춤법 목록", Spell.items.size() + "개" + (spellOff > 0 ? " · 꺼짐 " + spellOff + "개" : ""), () -> { spellQuery = ""; spellOffOnly = false; spellCat = null; open("spell"); });
         note(b, "비밀번호·이메일·주소 입력칸에서는 제안도 학습도 하지 않아요. 배운 내용은 이 폰 안에만 저장돼요 (이 앱은 인터넷 권한이 없어요).");
         note(b, "ㅠㅠ, ㅜㅜ 처럼 같은 키를 겹쳐 친 것은 건드리지 않아요.");
         note(b, "오타 제안과 맞춤법 제안이 같이 생기면 오타 제안을 먼저 보여줘요.");
@@ -1573,68 +1569,60 @@ public final class SettingsUi {
         if (ks.size() > 200) list.addView(tv("외 " + (ks.size() - 200) + "개 · 검색으로 찾아 주세요.", 13, sub, false), mlp(-1, -2, 14, 8, 14, 10));
     }
 
-    // ================================================================== 고치지 않기로 한 말
-    private String blockQuery = "";
-
-    private View pageTypoBlock() {
-        Typo.load(a);
-        LinearLayout b = scaffold("고치지 않기로 한 말", "오타 교정을 지우기로 되돌렸던 말이에요. 여기 있는 말은 다시 고치지 않아요", true);
-        LinearLayout lc = card(b, null);
-        final EditText q = field("검색");
-        q.setText(blockQuery);
-        lc.addView(q, mlp(-1, -2, 8, 8, 8, 6));
-        final LinearLayout list = col();
-        lc.addView(list);
-        onText(q, () -> { blockQuery = q.getText().toString().trim(); fillBlock(list); });
-        fillBlock(list);
-        note(b, "지우면 그 말도 다시 오타 제안·자동 교정 대상이 돼요.");
-        if (!Typo.block.isEmpty())
-            b.addView(ghostBtn("모두 지우기", RED, () -> { Typo.block.clear(); Typo.saveData(a); show("typo_block", false); }), mlp(-1, -2, 0, 12, 0, 0));
-        return (View) b.getParent();
-    }
-
-    private void fillBlock(final LinearLayout list) {
-        list.removeAllViews();
-        List<String> ks = new ArrayList<>();
-        for (String w : Typo.block) if (blockQuery.isEmpty() || w.contains(blockQuery)) ks.add(w);
-        java.util.Collections.sort(ks);
-        if (ks.isEmpty()) list.addView(tv(Typo.block.isEmpty() ? "아직 없어요." : "'" + blockQuery + "' 에 맞는 말이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
-        for (final String w : ks)
-            list.addView(toggleRow(w, "되돌렸던 말 · 고치지 않음", "지우기", RED, () -> {
-                Typo.block.remove(w);
-                Typo.saveData(a);
-                fillBlock(list);
-            }));
-    }
-
     // ================================================================== 맞춤법 목록
     private String spellQuery = "";
     private boolean spellOffOnly;
 
+    private String spellCat;      // null = 전체
+
     private View pageSpell() {
         Spell.load(a);
-        LinearLayout b = scaffold("맞춤법 목록", "표준어에 없어서 언제나 틀린 형태만 모았어요. 항목을 끄면 다시 제안하지 않아요", true);
-        LinearLayout lc = card(b, null);
-        final EditText q = field("검색 (예: 되요, 며칠)");
+        // 고정: 제목 · 검색 · 칩 / 가운데: 목록만 스크롤 (남는 높이 전부) / 맨 아래: 꺼진 항목 모두 다시 켜기
+        LinearLayout pg = col();
+        pg.setPadding(dp(18), dp(6), dp(18), dp(12));
+        android.widget.ImageView back = icon(LineIcon.BACK, text, 10);
+        ripple(back, round(Color.TRANSPARENT, 22), 22);
+        back.setOnClickListener(v -> back());
+        pg.addView(back, mlp(dp(44), dp(44), -8, 0, 0, 4));
+        pg.addView(tv("맞춤법 목록", 26, text, true), mlp(-1, -2, 4, 0, 4, 0));
+        pg.addView(tv("표준어에 없어서 언제나 틀린 형태만 모았어요. 항목을 끄면 다시 제안하지 않아요", 14, sub, false), mlp(-1, -2, 4, 4, 4, 0));
+        LinearLayout lc = card(pg, null);
+        final EditText q = field("검색 (예: 되요, 베개)");
         q.setText(spellQuery);
         lc.addView(q, mlp(-1, -2, 8, 8, 8, 6));
-        final LinearLayout list = col();
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(a);
+        hs.setHorizontalScrollBarEnabled(false);
         LinearLayout chips = row();
-        final TextView[] cAll = new TextView[1], cOff = new TextView[1];
-        cAll[0] = chipBtn("전체", !spellOffOnly, () -> { spellOffOnly = false; show("spell", false); });
-        cOff[0] = chipBtn("꺼진 것만", spellOffOnly, () -> { spellOffOnly = true; show("spell", false); });
-        chips.addView(cAll[0], mlp(-2, -2, 0, 0, 8, 0));
-        chips.addView(cOff[0]);
-        lc.addView(chips, mlp(-1, -2, 8, 2, 8, 6));
-        lc.addView(list);
+        chips.addView(chipBtn("전체", !spellOffOnly && spellCat == null, () -> { spellOffOnly = false; spellCat = null; show("spell", false); }), mlp(-2, -2, 0, 0, 8, 0));
+        chips.addView(chipBtn("꺼진 것만", spellOffOnly, () -> { spellOffOnly = true; spellCat = null; show("spell", false); }), mlp(-2, -2, 0, 0, 8, 0));
+        List<String> cats = new ArrayList<>();
+        for (Spell.Item it : Spell.items) if (!cats.contains(it.cat)) cats.add(it.cat);
+        for (final String c : cats)
+            chips.addView(chipBtn(c, !spellOffOnly && c.equals(spellCat), () -> { spellOffOnly = false; spellCat = c; show("spell", false); }), mlp(-2, -2, 0, 0, 8, 0));
+        hs.addView(chips);
+        lc.addView(hs, mlp(-1, -2, 8, 2, 8, 8));
+        final ScrollView sv = new ScrollView(a);
+        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout inner = col();
+        LinearLayout listCard = card(inner, null);
+        final LinearLayout list = col();
+        listCard.addView(list);
+        note(inner, "바꾼 직후 지우기를 누르면 되돌아가고, 그 항목은 \"되돌려서 꺼짐\"이 돼요. 여기서 다시 켤 수 있어요.");
+        note(inner, "'되/돼'·'안/않'·'로서/로써'처럼 앞뒤 문맥을 봐야 하는 맞춤법과 띄어쓰기는 검사하지 않아요. ㅔ·ㅐ 분류에는 재일/제일처럼 둘 다 있는 말은 넣지 않았어요.");
+        note(inner, "자료: 국립국어원 표준국어대사전·한국어 어문 규범(한글 맞춤법, 표준어 규정, 외래어 표기법), 국립국어원 '틀리기 쉬운 우리말' 안내 등.");
+        sv.addView(inner, new FrameLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, 0, 1f);
+        sl.setMargins(0, dp(4), 0, 0);
+        pg.addView(sv, sl);
+        boolean any = !Spell.off.isEmpty() || !Spell.block.isEmpty();
+        TextView all = ghostBtn(any ? "꺼진 항목 모두 다시 켜기 (" + (Spell.off.size() + Spell.block.size()) + "개)" : "꺼진 항목이 없어요", any ? ACCENT : sub,
+                () -> { if (Spell.off.isEmpty() && Spell.block.isEmpty()) return; Spell.off.clear(); Spell.block.clear(); Spell.save(a); show("spell", false); });
+        pg.addView(all, mlp(-1, -2, 0, 8, 0, 0));
         onText(q, () -> { spellQuery = q.getText().toString().trim(); fillSpell(list); });
         fillSpell(list);
-        boolean any = !Spell.off.isEmpty() || !Spell.block.isEmpty();
-        if (any) b.addView(ghostBtn("꺼진 항목 모두 다시 켜기", ACCENT, () -> { Spell.off.clear(); Spell.block.clear(); Spell.save(a); show("spell", false); }), mlp(-1, -2, 0, 12, 0, 0));
-        note(b, "바꾼 직후 지우기를 누르면 되돌아가고, 그 항목은 \"되돌려서 꺼짐\"이 돼요. 여기서 다시 켤 수 있어요.");
-        note(b, "'되/돼'·'안/않'·'로서/로써'처럼 앞뒤 문맥을 봐야 하는 맞춤법과 띄어쓰기는 검사하지 않아요.");
-        note(b, "자료: 국립국어원 표준국어대사전·한국어 어문 규범(한글 맞춤법, 표준어 규정, 외래어 표기법), 국립국어원 '틀리기 쉬운 우리말' 안내 등.");
-        return (View) b.getParent();
+        root.setTag(sv);
+        pageScroll = sv;
+        return pg;
     }
 
     private void fillSpell(final LinearLayout list) {
@@ -1642,6 +1630,7 @@ public final class SettingsUi {
         List<Spell.Item> ks = new ArrayList<>();
         for (Spell.Item it : Spell.items) {
             if (spellOffOnly && Spell.enabled(it)) continue;
+            if (spellCat != null && !spellCat.equals(it.cat)) continue;
             boolean hit = spellQuery.isEmpty() || it.disp.contains(spellQuery);
             for (int i = 0; !hit && i < it.wrong.length; i++) hit = it.wrong[i].contains(spellQuery) || it.right[i].contains(spellQuery);
             if (hit) ks.add(it);

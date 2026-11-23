@@ -11,7 +11,7 @@ import android.graphics.drawable.Drawable;
 
 /** Minimal stroke icons on a 24x24 grid (Lucide-style: 2px stroke, round caps). */
 public final class LineIcon extends Drawable {
-    public static final int SOUND = 0, HAPTIC = 1, KEYBOARD = 2, THEME = 3, CLIPBOARD = 4, BACK = 5, CHEVRON = 6, PLAY = 7, BKSP = 8, ENTER = 9, SPACEBAR = 10, SMILE = 11, SHIFT = 12, SHIFT_LOCK = 13, PENCIL = 14, MESSAGE = 15, TRI_LEFT = 16, TRI_RIGHT = 17, SWAP = 18, TRI_UP = 19, TRI_DOWN = 20, GEAR = 21, MIC = 22, SEARCH = 23, CLOCK = 24, CLOSE = 25;
+    public static final int SOUND = 0, HAPTIC = 1, KEYBOARD = 2, THEME = 3, CLIPBOARD = 4, BACK = 5, CHEVRON = 6, PLAY = 7, BKSP = 8, ENTER = 9, SPACEBAR = 10, SMILE = 11, SHIFT = 12, SHIFT_LOCK = 13, PENCIL = 14, MESSAGE = 15, TRI_LEFT = 16, TRI_RIGHT = 17, SWAP = 18, TRI_UP = 19, TRI_DOWN = 20, GEAR = 21, MIC = 22, SEARCH = 23, CLOCK = 24, CLOSE = 25, ROBOT = 26;
 
     private final int type;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -183,6 +183,16 @@ public final class LineIcon extends Drawable {
             case CLOSE:
                 c.drawLine(6, 6, 18, 18, p);
                 c.drawLine(18, 6, 6, 18, p);
+                break;
+            case ROBOT:     // 네모난 로봇 머리 (GPT 이미지 생성으로 그린 시안을 같은 선 굵기로 옮김: source/design/robot_icon_gpt.png)
+                c.drawRoundRect(new RectF(5, 8.5f, 19, 21), 3, 3, p);   // 머리
+                c.drawLine(12, 5.6f, 12, 8.5f, p);                      // 안테나
+                c.drawCircle(12, 3.6f, 1.9f, p);
+                c.drawRoundRect(new RectF(2, 12, 5, 17.5f), 1.4f, 1.4f, p);     // 귀
+                c.drawRoundRect(new RectF(19, 12, 22, 17.5f), 1.4f, 1.4f, p);
+                c.drawCircle(9.3f, 13.8f, 1.1f, p);                     // 눈
+                c.drawCircle(14.7f, 13.8f, 1.1f, p);
+                c.drawLine(10.2f, 17.8f, 13.8f, 17.8f, p);              // 입
                 break;
             case PLAY:
                 path.moveTo(8, 5); path.lineTo(19, 12); path.lineTo(8, 19); path.close();

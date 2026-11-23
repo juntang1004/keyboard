@@ -3,7 +3,8 @@
 
 원본 열: 틀린형태 <TAB> 바른형태 <TAB> 방식 <TAB> 표시 <TAB> 메모
  {가|나} 묶음은 틀린형태와 바른형태에서 같은 순서로 짝지어 펼친다 (묶음이 여럿이면 모든 조합).
-출력 (한 줄 = 한 항목): id <TAB> 표시 <TAB> 방식 <TAB> 틀린=바른|틀린=바른...
+출력 (한 줄 = 한 항목): id <TAB> 표시 <TAB> 방식 <TAB> 틀린=바른|틀린=바른... <TAB> 분류
+ 분류: 원본의 "#@분류 이름" 줄 아래 항목들 (그 전은 일반)
  id = 원본의 틀린형태 그대로 (설정에서 끈 항목을 기억하는 열쇠라 바꾸지 않는다)
 사용: spell_build.py spell_list.tsv out/spell.tsv
 """
@@ -37,9 +38,12 @@ def expand(wrong, right):
 
 
 def load(path):
-    items = []
+    items, cat = [], '일반'
     for n, line in enumerate(open(path, encoding='utf-8'), 1):
         line = line.rstrip('\n')
+        if line.startswith('#@분류'):                 # 이 줄 아래 항목들의 분류 (설정 목록의 칩)
+            cat = line[len('#@분류'):].strip() or '일반'
+            continue
         if not line.strip() or line.startswith('#'):
             continue
         f = line.split('\t')
@@ -47,7 +51,7 @@ def load(path):
             raise ValueError('%d번째 줄 형식 오류: %r' % (n, line))
         pairs = expand(f[0], f[1])
         disp = f[3] if len(f) > 3 and f[3] else '%s → %s' % pairs[0]
-        items.append((f[0], disp, f[2], pairs, f[4] if len(f) > 4 else ''))
+        items.append((f[0], disp, f[2], pairs, f[4] if len(f) > 4 else '', cat))
     return items
 
 
@@ -69,7 +73,7 @@ def main(src, dst):
         print('\n'.join(errs)); sys.exit(1)
     with open(dst, 'w', encoding='utf-8', newline='\n') as f:
         for it in items:
-            f.write('%s\t%s\t%s\t%s\n' % (it[0], it[1], it[2], '|'.join('%s=%s' % p for p in it[3])))
+            f.write('%s\t%s\t%s\t%s\t%s\n' % (it[0], it[1], it[2], '|'.join('%s=%s' % p for p in it[3]), it[5]))
     print('items', len(items), 'forms', sum(len(it[3]) for it in items))
 
 

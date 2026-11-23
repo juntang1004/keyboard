@@ -29,9 +29,9 @@ public final class Spell {
 
     // ------------------------------------------------------------------ 목록
     static final class Item {
-        final String id, disp, mode;
+        final String id, disp, mode, cat;
         final String[] wrong, right;
-        Item(String id, String disp, String mode, String[] wrong, String[] right) { this.id = id; this.disp = disp; this.mode = mode; this.wrong = wrong; this.right = right; }
+        Item(String id, String disp, String mode, String[] wrong, String[] right, String cat) { this.id = id; this.disp = disp; this.mode = mode; this.wrong = wrong; this.right = right; this.cat = cat; }
     }
 
     private static final class Ent {
@@ -61,7 +61,7 @@ public final class Spell {
             String[] pairs = f[3].split("\\|");
             String[] w = new String[pairs.length], rt = new String[pairs.length];
             for (int i = 0; i < pairs.length; i++) { int k = pairs[i].indexOf('='); w[i] = pairs[i].substring(0, k); rt[i] = pairs[i].substring(k + 1); }
-            Item it = new Item(f[0], f[1], f[2], w, rt);
+            Item it = new Item(f[0], f[1], f[2], w, rt, f.length > 4 && !f[4].isEmpty() ? f[4] : "일반");
             items.add(it);
             for (int i = 0; i < w.length; i++) {
                 Ent e = new Ent(w[i], rt[i], it);

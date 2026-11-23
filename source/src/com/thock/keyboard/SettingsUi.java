@@ -1428,7 +1428,7 @@ public final class SettingsUi {
         ((LinearLayout.LayoutParams) c.getLayoutParams()).topMargin = dp(12);
         switchRow(c, "오타 제안", "고칠 말을 툴바에 보여줘요", Typo.on, v -> { Typo.on = v; Typo.saveFlags(a); });
         divider(c);
-        switchRow(c, "ㅠ·ㅜ 오타 자동 교정", "확실하면 바로 고쳐요 (장고규가기 → 장곡 가기)", Typo.autoUU, v -> { Typo.autoUU = v; Typo.saveFlags(a); });
+        switchRow(c, "ㅠ·ㅜ 오타 자동 교정", "확실하면 바로 고쳐요 (바부먹자 → 밥 먹자)", Typo.autoUU, v -> { Typo.autoUU = v; Typo.saveFlags(a); });
         divider(c);
         switchRow(c, "그 밖의 오타도 자동 교정", "아주 확실할 때만 바로 고쳐요", Typo.auto, v -> { Typo.auto = v; Typo.saveFlags(a); });
         divider(c);
@@ -1690,7 +1690,7 @@ public final class SettingsUi {
         LinearLayout add = card(b, "단어 추가");
         LinearLayout r = row();
         r.setPadding(dp(8), dp(8), dp(8), dp(8));
-        final EditText in = field("예: 장곡");
+        final EditText in = field("예: 이름이나 줄임말");
         r.addView(in, new LinearLayout.LayoutParams(0, -2, 1f));
         final LinearLayout list = col();
         TextView ok = primaryBtn("추가", () -> {

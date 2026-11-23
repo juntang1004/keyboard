@@ -208,7 +208,7 @@
    남은 걸림은 모두 실제 오류 (베터리, 유투브, 네비게이션 등). 전체 제안률 0.0196%
  - 자료: 국립국어원 표준국어대사전·외래어 표기법, 국립국어원 트위터(배터리), 베개 표기 해설 글 등
  - 메뉴 "오타 학습 · 터치 보정" → "터치 범위 자동 학습 · 수동 보정", 아이콘은 네모난 로봇 머리
-   (GPT 이미지 생성으로 시안을 만들고 다른 아이콘과 같은 선 굵기로 옮겨 그림: source/design/robot_icon_gpt.png, LineIcon.ROBOT)
+   (GPT 이미지 생성으로 만든 그림을 그대로 씀: 원본 source/design/robot_icon_gpt.png → 흰 선 마스크 mod2/robot_icon.png → assets, 아이콘 색으로 칠함)
 
 ■ 소스 (source 폴더)
  - src/            새로 짠 코드 (Ext: 키보드 확장/툴바/패널, CjEngine: 천지인 조합, NaraEngine: 나랏글 조합,

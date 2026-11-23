@@ -524,6 +524,7 @@ public final class SettingsUi {
 
     // ================================================================== pages
     private View pageHome() {
+        LineIcon.loadRobot(a);
         LinearLayout b = scaffold("", null, false);
         b.removeAllViews();
 

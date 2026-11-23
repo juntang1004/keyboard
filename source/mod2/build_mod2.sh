@@ -14,7 +14,7 @@ java -cp "$R8" com.android.tools.r8.D8 --release --min-api 26 --lib "$AJ" --outp
 (cd "$W" && unzip -q -o "$BASE" AndroidManifest.xml -d man)
 "$PY" "$H/axml_add_queries.py" "$W/man/AndroidManifest.xml" "$W/AndroidManifest.xml" com.google.android.googlequicksearchbox com.google.android.tts
 "$PY" "$H/spell_build.py" "$H/spell_list.tsv" "$W/spell.tsv"      # 맞춤법 목록 원본 → 앱용
-"$PY" "$H/repack.py" "$BASE" "$W/unsigned.apk" "classes4.dex=$W/dex/classes.dex" "AndroidManifest.xml=$W/AndroidManifest.xml" "assets/typo_lm.bin=$H/typo_lm.bin" "assets/spell.tsv=$W/spell.tsv" "assets/emoji.tsv=$H/emoji.tsv"
+"$PY" "$H/repack.py" "$BASE" "$W/unsigned.apk" "classes4.dex=$W/dex/classes.dex" "AndroidManifest.xml=$W/AndroidManifest.xml" "assets/typo_lm.bin=$H/typo_lm.bin" "assets/spell.tsv=$W/spell.tsv" "assets/emoji.tsv=$H/emoji.tsv" "assets/robot_icon.png=$H/robot_icon.png"
 javac -nowarn -encoding UTF-8 -cp "$SIG" -d "$W/sign" "$H"/sign/*.java
 J="--add-exports java.base/sun.security.x509=ALL-UNNAMED --add-exports java.base/sun.security.pkcs=ALL-UNNAMED"
 java $J -cp "$(cpath "$SIG:$W/sign")" Sign "$H/sign/thock-mod.p12" android thockmod "$W/unsigned.apk" "$OUT"

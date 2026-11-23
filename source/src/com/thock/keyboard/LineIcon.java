@@ -29,9 +29,27 @@ public final class LineIcon extends Drawable {
         fill.setColor(color);
     }
 
+    /** 로봇 머리 아이콘: GPT 이미지 생성으로 만든 그림을 그대로 쓴다 (assets/robot_icon.png, 흰 선 + 투명 배경 → 아이콘 색으로 칠함) */
+    private static android.graphics.Bitmap robotMask;
+
+    public static void loadRobot(android.content.Context ctx) {
+        if (robotMask != null || ctx == null) return;
+        try (java.io.InputStream in = ctx.getAssets().open("robot_icon.png")) {
+            robotMask = android.graphics.BitmapFactory.decodeStream(in);
+        } catch (Throwable ignored) {}
+    }
+
     @Override
     public void draw(Canvas c) {
         Rect b = getBounds();
+        if (type == ROBOT && robotMask != null) {
+            int sz = Math.min(b.width(), b.height());
+            int l = b.left + (b.width() - sz) / 2, t = b.top + (b.height() - sz) / 2;
+            Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            bp.setColorFilter(new android.graphics.PorterDuffColorFilter(p.getColor(), android.graphics.PorterDuff.Mode.SRC_IN));
+            c.drawBitmap(robotMask, null, new Rect(l, t, l + sz, t + sz), bp);
+            return;
+        }
         float s = Math.min(b.width(), b.height()) / 24f;
         c.save();
         c.translate(b.left + (b.width() - 24 * s) / 2f, b.top + (b.height() - 24 * s) / 2f);
@@ -184,7 +202,7 @@ public final class LineIcon extends Drawable {
                 c.drawLine(6, 6, 18, 18, p);
                 c.drawLine(18, 6, 6, 18, p);
                 break;
-            case ROBOT:     // 네모난 로봇 머리 (GPT 이미지 생성으로 그린 시안을 같은 선 굵기로 옮김: source/design/robot_icon_gpt.png)
+            case ROBOT:     // 그림(robot_icon.png)을 못 읽었을 때만 쓰는 대신 그림
                 c.drawRoundRect(new RectF(5, 8.5f, 19, 21), 3, 3, p);   // 머리
                 c.drawLine(12, 5.6f, 12, 8.5f, p);                      // 안테나
                 c.drawCircle(12, 3.6f, 1.9f, p);

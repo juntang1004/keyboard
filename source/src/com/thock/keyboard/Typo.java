@@ -82,13 +82,9 @@ public final class Typo {
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); learned.put(k, o.getInt(k)); } }
             s = p.getString("typo_rule_hits", null);
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); ruleHits.put(k, o.getInt(k)); } }
-            // 자음·모음만으로 된 오타 쌍은 타자를 망가뜨리니 모으지 않는다 (예전에 모인 것도 정리)
-            for (Iterator<String> it = learned.keySet().iterator(); it.hasNext(); ) {
-                String k = it.next(); int t = k.indexOf('	');
-                if (t < 0 || jamoOnly(k.substring(0, t)) || jamoOnly(k.substring(t + 1))) it.remove();
-            }
             s = p.getString("typo_ignored", null);
             if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) ignored.add(a.getString(i)); }
+            cleanLearned();         // 예전에 모인 것 중 이제 모으지 않는 쌍 정리
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "load", t); }
     }
 
@@ -119,10 +115,32 @@ public final class Typo {
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "save", t); }
     }
 
+    /**
+     * 모인 오타 정리: 모을 수 없는 쌍(자음·모음만, 한 글자)은 빼고, 깨진 글자가 든 것은 바뀐 부분만 남겨 합치고,
+     * 이미 자동 교정이 고치는 것은 뺀다.
+     */
+    static void cleanLearned() {
+        Map<String, Integer> out = new HashMap<>();
+        for (Map.Entry<String, Integer> e : learned.entrySet()) {
+            String k = e.getKey(); int t = k.indexOf('	');
+            if (t < 0) continue;
+            String ty = k.substring(0, t), ri = k.substring(t + 1);
+            if (hasLoneJamo(ty)) { String[] cr = core(ty, ri); ty = cr[0]; ri = cr[1]; }
+            if (!collectable(ty, ri) || covered(ty)) continue;
+            String nk = ty + "	" + ri;
+            if (ignored.contains(nk)) continue;
+            Integer n = out.get(nk);
+            out.put(nk, (n == null ? 0 : n) + e.getValue());
+        }
+        learned.clear();
+        learned.putAll(out);
+    }
+
     /** 오타 쌍 하나를 모은다 (무시했거나 이미 자동 교정에 있으면 넘어감) */
     static void addPair(Context c, String typo, String right) {
         if (typo == null || right == null || typo.equals(right)) return;
-        if (jamoOnly(typo) || jamoOnly(right)) return;
+        if (hasLoneJamo(typo)) { String[] cr = core(typo, right); typo = cr[0]; right = cr[1]; }   // 해보ㅓ → 해봐 는 보ㅓ → 봐 로
+        if (!collectable(typo, right) || covered(typo)) return;
         String k = typo + "	" + right;
         if (ignored.contains(k) || right.equals(rules.get(typo))) return;
         Integer n = learned.get(k);
@@ -142,9 +160,41 @@ public final class Typo {
         return true;
     }
 
+    /**
+     * 모으거나 등록해도 되는 쌍인가: 자음·모음만으로 된 것(ㄹ → ㅎ), 한 글자 오타(키 → 티, 인 → 안)는 안 됨.
+     * 한 글자는 앞뒤 문맥 없이 오타인지 알 수 없고, 등록하면 그 글자로 시작하는 말이 모두 바뀌어 버린다.
+     * 보ㅓ → 봐 처럼 깨진 글자가 든 두 글자는 됨.
+     */
+    static boolean collectable(String typo, String right) {
+        return typo != null && right != null && !typo.equals(right) && !jamoOnly(typo) && !jamoOnly(right) && typo.length() >= 2;
+    }
+
+    /** 이미 등록된 자동 교정이 이 오타를 고치는가 (보ㅓ 가 있으면 해보ㅓ 도 고쳐짐). 고치는 규칙의 오타, 없으면 null */
+    static String coveredBy(String typo) {
+        String[] m = matchRule(typo);
+        return m == null ? null : m[2];
+    }
+
+    static boolean covered(String typo) { return coveredBy(typo) != null; }
+
+    /**
+     * 깨진 글자가 든 오타 쌍에서 바뀐 부분만 남긴다: 앞뒤의 같은 글자를 떼어 냄.
+     * 해보ㅓ → 해봐 = 보ㅓ → 봐, 허ㅏ면 → 화면 = 허ㅏ → 화. 떼어 낸 뒤 자모만 남으면 앞 글자를 다시 붙인다.
+     */
+    static String[] core(String typo, String right) {
+        int p = 0;
+        while (p < typo.length() && p < right.length() && typo.charAt(p) == right.charAt(p)) p++;
+        int q = 0;
+        while (q < typo.length() - p && q < right.length() - p && typo.charAt(typo.length() - 1 - q) == right.charAt(right.length() - 1 - q)) q++;
+        while (p > 0 && jamoOnly(typo.substring(p, typo.length() - q))) p--;
+        String t = typo.substring(p, typo.length() - q), r = right.substring(p, right.length() - q);
+        if (t.isEmpty() || r.isEmpty() || !hasLoneJamo(t)) return new String[]{typo, right};
+        return new String[]{t, r};
+    }
+
     /** 자동 교정 규칙 등록 (등록할 수 없는 것이면 false). 고친 횟수는 0부터 */
     static boolean addRule(String typo, String right) {
-        if (typo == null || right == null || typo.isEmpty() || right.isEmpty() || typo.equals(right) || jamoOnly(typo)) return false;
+        if (typo == null || right == null || typo.isEmpty() || right.isEmpty() || typo.equals(right) || jamoOnly(typo) || typo.length() < 2) return false;
         rules.put(typo, right);
         ruleHits.put(typo, 0);
         return true;

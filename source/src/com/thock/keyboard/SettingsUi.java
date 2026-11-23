@@ -1448,8 +1448,29 @@ public final class SettingsUi {
     // ================================================================== 자동 학습한 오타
     private String learnQuery = "";
 
+    /**
+     * 자동 교정 등록: 자음·모음만 / 한 글자 오타는 막고, 이미 이 오타를 고치는 규칙이 있으면 (보ㅓ 가 있는데 해보ㅓ) 물어본다.
+     */
+    private void tryAddRule(final String typo, final String right, final Runnable done) {
+        if (Typo.jamoOnly(typo)) { Toast.makeText(a, "자음·모음만으로 된 오타는 등록할 수 없어요 (그 글자를 칠 때마다 바뀌어 버려요)", Toast.LENGTH_LONG).show(); return; }
+        if (typo.length() < 2) { Toast.makeText(a, "한 글자 오타는 등록할 수 없어요 (앞뒤 문맥 없이는 오타인지 알 수 없고, 그 글자로 시작하는 말이 모두 바뀌어요)", Toast.LENGTH_LONG).show(); return; }
+        final Runnable add = () -> {
+            if (!Typo.addRule(typo, right)) { Toast.makeText(a, "등록할 수 없는 오타예요", Toast.LENGTH_SHORT).show(); return; }
+            Typo.saveData(a);
+            done.run();
+        };
+        String by = Typo.rules.containsKey(typo) ? null : Typo.coveredBy(typo);
+        if (by == null) { add.run(); return; }
+        new android.app.AlertDialog.Builder(a)
+                .setMessage("이미 \"" + by + "\"가 등록되어 있어서 \"" + typo + "\"도 고쳐져요.\n그래도 등록하시겠습니까?")
+                .setPositiveButton("등록", (d, w) -> add.run())
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
     private View pageTypoLearned() {
         Typo.load(a);
+        Typo.cleanLearned();
         LinearLayout b = scaffold("자동 학습한 오타", "지우기로 고친 오타를 모았어요. 자동 교정에 등록하면 다음부터 바로 고쳐져요", true);
         LinearLayout lc = card(b, null);
         final EditText q = field("검색");
@@ -1461,7 +1482,8 @@ public final class SettingsUi {
         fillLearned(list);
         note(b, "예) 과를 치려다 고ㅓ가 써져서 지우기로 ㅓ를 지우고 ㅏ를 치면 \"고ㅓ → 과\"가 모여요. 지운 글자 중 바뀐 것이 원래 키와 바로 붙은 키일 때만 모아요.");
         note(b, "삭제: 목록에서 지워요 (같은 오타가 또 모이면 다시 올라와요). 앞으로 무시: 목록에서 사라지고 같은 오타가 또 모여도 올라오지 않아요. 자동 교정 등록: 자동 교정 목록으로 옮겨요.");
-        note(b, "ㄹ → ㅎ 처럼 자음·모음 하나만으로 된 오타는 모으지 않아요 (자동 교정에 들어가면 그 글자를 칠 때마다 바뀌어 버려서).");
+        note(b, "모으지 않는 것: ㄹ → ㅎ 같은 자음·모음, 키 → 티 · 인 → 안 같은 한 글자 오타 (앞뒤 문맥 없이는 오타인지 알 수 없어서), 이미 자동 교정이 고치는 오타.");
+        note(b, "보ㅓ 처럼 깨진 글자가 든 오타는 바뀐 부분만 모아요: 해보ㅓ → 해봐 는 보ㅓ → 봐 로. 보ㅓ → 봐 하나만 등록하면 해보ㅓ·보ㅓ서 등도 모두 고쳐져요.");
         String diag = "이번에 키보드를 켠 뒤 (쿼티 한글) 지우기 " + FixLearn.nBackspace + "번 · 지우고 다시 친 것 " + FixLearn.nChecked + "번 확인 · " + FixLearn.nLearned + "번 배움"
                 + (FixLearn.lastSkip.isEmpty() ? "" : " · 최근 건너뛴 이유: " + FixLearn.lastSkip);
         note(b, diag);
@@ -1507,13 +1529,13 @@ public final class SettingsUi {
             TextView reg = tv("자동 교정 등록", 13, ACCENT, true);
             reg.setPadding(dp(8), dp(8), dp(8), dp(8));
             ripple(reg, round(Color.TRANSPARENT, 12), 12);
-            reg.setOnClickListener(v -> {
-                if (!Typo.addRule(typo, right)) { Toast.makeText(a, "자음·모음 하나만으로 된 오타는 등록할 수 없어요", Toast.LENGTH_SHORT).show(); return; }
+            reg.setOnClickListener(v -> tryAddRule(typo, right, () -> {
                 Typo.learned.remove(k);
+                Typo.cleanLearned();          // 새 규칙이 고치게 된 것도 목록에서 뺌
                 Typo.saveData(a);
                 Toast.makeText(a, typo + " → " + right + " 자동 교정에 등록했어요", Toast.LENGTH_SHORT).show();
                 fillLearned(list);
-            });
+            }));
             r.addView(reg);
             list.addView(box);
         }
@@ -1703,11 +1725,7 @@ public final class SettingsUi {
         b.addView(primaryBtn("추가", () -> {
             String f = from.getText().toString().trim(), t = to.getText().toString().trim();
             if (f.isEmpty() || t.isEmpty() || f.equals(t) || f.length() > 30) { Toast.makeText(a, "오타와 바꿀 말을 서로 다르게 넣어 주세요 (오타는 30자까지)", Toast.LENGTH_SHORT).show(); return; }
-            if (Typo.jamoOnly(f)) { Toast.makeText(a, "자음·모음 하나만으로 된 오타는 등록할 수 없어요 (그 글자를 칠 때마다 바뀌어 버려요)", Toast.LENGTH_LONG).show(); return; }
-            Typo.addRule(f, t);
-            Typo.saveData(a);
-            from.setText(""); to.setText("");
-            fillRules(list);
+            tryAddRule(f, t, () -> { from.setText(""); to.setText(""); fillRules(list); });
         }), mlp(-1, -2, 0, 12, 0, 0));
         LinearLayout lc = card(b, "목록");
         final EditText q = field("검색");

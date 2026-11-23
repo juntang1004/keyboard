@@ -1070,11 +1070,36 @@ public final class Ext {
         if (!Emoji.ready()) Emoji.load(svc.getApplicationContext());
         Emoji.loadRecent(svc);
         fillEmojiRows();
-        if (rootRef != null) emojiPanel.setPadding(0, 0, 0, rootRef.getPaddingBottom() + dp(bottomExtra()));
+        sizeEmojiPanel();
         emojiPanel.setVisibility(View.VISIBLE);
         int start = Emoji.recent.isEmpty() ? 1 : 0;
         emojiList.setSelection(emojiCatRow[start]);
         markEmojiCat(start);
+    }
+
+    /** 이모지 화면은 지금 자판과 같은 높이로 (화면 전체로 커지지 않게) */
+    private static void sizeEmojiPanel() {
+        if (emojiPanel == null) return;
+        int h = rootRef != null && rootRef.getHeight() > 0 ? rootRef.getHeight() : dp(270);
+        android.view.ViewGroup.LayoutParams lp = emojiPanel.getLayoutParams();
+        if (lp != null && lp.height != h) { lp.height = h; emojiPanel.setLayoutParams(lp); }
+        if (rootRef != null) emojiPanel.setPadding(0, 0, 0, rootRef.getPaddingBottom() + dp(bottomExtra()));
+    }
+
+    /** 격자를 좌우로 밀면 다음·이전 분류로 */
+    private static void emojiSwipe(int dir) {
+        int cat = Math.max(0, emojiCurCat);
+        for (int i = cat + dir; i >= 0 && i < Emoji.CATS; i += dir) {
+            if (i < emojiCatItems.size() && (i == 0 || !emojiCatItems.get(i).isEmpty())) {
+                jumpEmojiCat(i);
+                if (emojiList != null) {
+                    emojiList.setTranslationX(dir * dp(36));
+                    emojiList.setAlpha(0.4f);
+                    emojiList.animate().translationX(0).alpha(1f).setDuration(140).start();
+                }
+                return;
+            }
+        }
     }
 
     private static void closeEmoji() {
@@ -1143,7 +1168,33 @@ public final class Ext {
         p.addView(line, new LinearLayout.LayoutParams(-1, dp(1)));
         // 아래: 이어진 격자 + 떠 있는 지우기
         FrameLayout body = new FrameLayout(c);
-        emojiList = new android.widget.ListView(c);
+        emojiList = new android.widget.ListView(c) {
+            private float x0, y0;
+            private boolean swiped;
+            @Override public boolean dispatchTouchEvent(MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN: x0 = e.getX(); y0 = e.getY(); swiped = false; break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (swiped) return true;
+                        float dx = e.getX() - x0, dy = e.getY() - y0;
+                        if (Math.abs(dx) > dp(44) && Math.abs(dx) > 2 * Math.abs(dy)) {
+                            swiped = true;
+                            MotionEvent cn = MotionEvent.obtain(e);
+                            cn.setAction(MotionEvent.ACTION_CANCEL);
+                            super.dispatchTouchEvent(cn);        // 눌려 있던 이모지가 입력되지 않게
+                            cn.recycle();
+                            emojiSwipe(dx < 0 ? 1 : -1);
+                            return true;
+                        }
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (swiped) return true;
+                        break;
+                }
+                return super.dispatchTouchEvent(e);
+            }
+        };
         emojiList.setDivider(null);
         emojiList.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         emojiList.setVerticalScrollBarEnabled(false);
@@ -1288,6 +1339,7 @@ public final class Ext {
         if (backToPanel && emojiPanel != null) {
             Emoji.loadRecent(svc);
             fillEmojiRows();
+            sizeEmojiPanel();
             emojiPanel.setVisibility(View.VISIBLE);
         }
     }

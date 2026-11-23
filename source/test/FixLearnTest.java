@@ -118,6 +118,31 @@ public class FixLearnTest {
         boolean r1 = (Boolean) addRule.invoke(null, "ㅂ", "ㅈ"), r2 = (Boolean) addRule.invoke(null, "부담오", "부담고");
         if (r1 || !r2) { fail++; System.out.println("FAIL addRule " + r1 + " " + r2); } else System.out.println("ok   addRule: ㅂ 거부, 부담오 등록");
 
+        // ---- 한 글자 오타 제외, 깨진 글자는 바뀐 부분만, 이미 고치는 규칙이 있으면 모으지 않음
+        rules.clear();
+        learned.clear();
+        addPair.invoke(null, null, "키", "티"); addPair.invoke(null, null, "인", "안"); addPair.invoke(null, null, "고", "오");
+        addPair.invoke(null, null, "해보ㅓ", "해봐"); addPair.invoke(null, null, "허ㅏ면", "화면"); addPair.invoke(null, null, "감수해고", "감수해도");
+        String lk = new TreeSet<>(learned.keySet()).toString().replace('	', '>');
+        String want = "[감수해고>감수해도, 보ㅓ>봐, 허ㅏ>화]";
+        if (!lk.equals(want)) { fail++; System.out.println("FAIL 모으기: " + lk + " (기대 " + want + ")"); } else System.out.println("ok   모으기: " + lk);
+        learned.clear();
+        rules.put("보ㅓ", "봐");
+        addPair.invoke(null, null, "해보ㅓ", "해봐"); addPair.invoke(null, null, "보ㅓ서", "봐서");
+        if (!learned.isEmpty()) { fail++; System.out.println("FAIL 이미 고치는 규칙: " + learned.keySet()); } else System.out.println("ok   보ㅓ 규칙이 있으면 해보ㅓ·보ㅓ서 안 모음");
+        Method cov = T.getDeclaredMethod("coveredBy", String.class); cov.setAccessible(true);
+        Object cb = cov.invoke(null, "해보ㅓ");
+        if (!"보ㅓ".equals(cb)) { fail++; System.out.println("FAIL coveredBy: " + cb); } else System.out.println("ok   coveredBy(해보ㅓ) = 보ㅓ");
+        boolean r3 = (Boolean) addRule.invoke(null, "인", "안");
+        if (r3) { fail++; System.out.println("FAIL 한 글자 규칙 등록됨"); } else System.out.println("ok   한 글자 규칙 거부");
+        // 예전에 모인 목록 정리
+        rules.clear();
+        learned.clear();
+        learned.put("키	티", 1); learned.put("해보ㅓ	해봐", 2); learned.put("보ㅓ	봐", 1); learned.put("ㄹ	ㅎ", 3); learned.put("유투	유튜", 1);
+        Method clean = T.getDeclaredMethod("cleanLearned"); clean.setAccessible(true); clean.invoke(null);
+        String cl = new TreeMap<>(learned).toString().replace('	', '>');
+        if (!cl.equals("{보ㅓ>봐=3, 유투>유튜=1}")) { fail++; System.out.println("FAIL 정리: " + cl); } else System.out.println("ok   정리: " + cl);
+
         System.out.println(fail == 0 ? "OK" : "FAIL " + fail);
         if (fail > 0) System.exit(1);
     }

@@ -2702,7 +2702,14 @@ public final class Ext {
         final float[] downY = {0};
         final CursorDrag drag = new CursorDrag();
         final Runnable[] repeat = new Runnable[1];
-        repeat[0] = () -> { if (emojiSearch) { emojiSearchKey(K_BS, null); H.postDelayed(repeat[0], 45); return; } fixBeforeBackspace(); cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat(); H.postDelayed(repeat[0], 45); };
+        final long[] deleteStarted = {0};
+        repeat[0] = () -> {
+            if (emojiSearch) { emojiSearchKey(K_BS, null); H.postDelayed(repeat[0], 45); return; }
+            fixBeforeBackspace(); cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat();
+            long held = android.os.SystemClock.uptimeMillis() - deleteStarted[0];
+            long delay = opt("fast_delete") ? (held < 1500 ? 70 : held < 3000 ? 45 : 25) : 70;
+            H.postDelayed(repeat[0], delay);
+        };
         final Runnable longPress = () -> {
             if (emojiSearch) {                   // 검색 중: 길게 눌러 나오는 숫자·기호는 검색 칸으로
                 String lt = lpText((KS) f.getTag());
@@ -2767,6 +2774,7 @@ public final class Ext {
                         fired[0] = true;
                         H.postDelayed(repeat[0], 400);
                     } else if (code == K_BS) {
+                        deleteStarted[0] = android.os.SystemClock.uptimeMillis();
                         if (Spell.undo(spellHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else if (Typo.undo(typoHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else {          // 고친 직후의 지우기 = 되돌리기, 아니면 보통 지우기

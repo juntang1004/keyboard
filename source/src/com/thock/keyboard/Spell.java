@@ -22,7 +22,7 @@ import java.util.Set;
  *
  * 띄어쓰기·마침표·쉼표·?·!·엔터로 어절이 끝난 직후, 방금 끝난 어절을 목록에서 찾아 툴바에 제안한다.
  * 자동으로 바꾸지 않는다. 입력창의 글(getTextBeforeCursor)만 보므로 천지인·나랏글·쿼티 모두 동작한다.
- * 칩을 눌러 바꾼 직후 지우기 = 되돌리기 + 그 항목은 다시 제안하지 않음.
+ * 칩을 눌러 바꾼 직후 지우기 = 되돌리기. 항목 사용 여부는 설정에서 변경한다.
  */
 public final class Spell {
     private Spell() {}
@@ -49,7 +49,7 @@ public final class Spell {
     static final Set<String> block = new HashSet<>();   // 바꾼 뒤 되돌려서 꺼진 항목
     private static boolean listLoaded, prefsLoaded;
 
-    static boolean enabled(Item it) { return !off.contains(it.id) && !block.contains(it.id); }
+    static boolean enabled(Item it) { return !off.contains(it.id); }
 
     static void parse(InputStream in) throws Exception {
         items.clear(); exact.clear(); whole.clear(); end.clear(); pre.clear(); sub.clear();
@@ -88,7 +88,7 @@ public final class Spell {
                 SharedPreferences p = sp(c);
                 on = p.getBoolean("spell_on", true);
                 readSet(p.getString("spell_off", null), off);
-                readSet(p.getString("spell_block", null), block);
+                block.clear(); // 과거 되돌리기로 자동 차단된 항목은 다시 제안
                 String st = p.getString("spell_stats", null);
                 if (st != null) stats.decode(st);
                 else {
@@ -327,8 +327,6 @@ public final class Spell {
             ic.commitText(d.oldText + (extra == 1 ? b.substring(b.length() - 1) : ""), 1);
             ic.endBatchEdit();
             Typo.reset();
-            block.addAll(d.ids);                           // 다시는 제안하지 않는다
-            if (c != null) save(c);
             return true;
         } catch (Throwable t) { android.util.Log.w("ThockSpell", "undo", t); return false; }
     }

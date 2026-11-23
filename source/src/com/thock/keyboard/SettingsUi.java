@@ -868,6 +868,18 @@ public final class SettingsUi {
                 : "삼성 키보드와 같은 쿼티(두벌식) 배열이에요. 위에 숫자줄이 있고, ⇧로 쌍자음(ㅃㅉㄸㄲㅆ)과 ㅒ·ㅖ를 써요.";
         k.addView(tv(desc, 13, sub, false), mlp(-1, -2, 14, 0, 14, 10));
 
+        LinearLayout test = card(b, "타자 테스트하기");
+        EditText practice = new EditText(a);
+        practice.setHint("여기를 눌러서 쳐 보세요");
+        practice.setHintTextColor(sub);
+        practice.setTextColor(text);
+        practice.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        practice.setMinLines(2);
+        practice.setGravity(Gravity.TOP | Gravity.START);
+        practice.setBackground(null);
+        practice.setPadding(dp(14), dp(8), dp(14), dp(8));
+        test.addView(practice);
+
         LinearLayout s = card(b, "키보드 크기");
         slider(s, "키 높이", 80, 150, prefs.getHeightPct(), "%", prefs::setHeightPct, null);
         slider(s, "키 너비", 50, Prefs.WIDTH_MAX, prefs.getWidthPct(), "%", prefs::setWidthPct, null);
@@ -884,6 +896,10 @@ public final class SettingsUi {
         divider(nr);
         switchRow(nr, "숫자줄 (쿼티·영어)", "끄면 윗줄 키에 1~0이 작게 표시되고, 길게 누르면 숫자가 나와요", ext().getBoolean("qnumrow", true),
                 on -> ext().edit().putBoolean("qnumrow", on).apply());
+
+        LinearLayout del = card(b, "지우기");
+        switchRow(del, "빠른 지우기", "지우기를 길게 누르면 점점 빠르게 지워요", ext().getBoolean("fast_delete", true),
+                on -> ext().edit().putBoolean("fast_delete", on).apply());
 
         LinearLayout cm = card(b, "커서 이동");
         switchRow(cm, "자판 위에서 밀어 커서 이동", "글자 키 위에서 손가락을 좌우로 길게 밀면 글자 대신 커서가 움직여요 (삼성 키보드처럼)",
@@ -1621,7 +1637,7 @@ public final class SettingsUi {
         ((LinearLayout.LayoutParams) listCard.getLayoutParams()).topMargin = 0;
         final LinearLayout list = col();
         listCard.addView(list);
-        note(inner, "바꾼 직후 지우기를 누르면 되돌아가고, 그 항목은 \"되돌려서 꺼짐\"이 돼요. 여기서 다시 켤 수 있어요.");
+        note(inner, "바꾼 직후 지우기를 누르면 되돌아가요. 항목은 목록에서 직접 끌 수 있어요.");
         note(inner, "'되/돼'·'안/않'·'로서/로써'처럼 앞뒤 문맥을 봐야 하는 맞춤법과 띄어쓰기는 검사하지 않아요. ㅔ·ㅐ 분류에는 재일/제일처럼 둘 다 있는 말은 넣지 않았어요.");
         note(inner, "자료: 국립국어원 표준국어대사전·한국어 어문 규범(한글 맞춤법, 표준어 규정, 외래어 표기법), 국립국어원 '틀리기 쉬운 우리말' 안내 등.");
         note(inner, "횟수는 툴바의 맞춤법 제안을 눌러 고친 것만 세요 (제안을 무시한 실수는 빠져요). 위 요약은 이번 달에 친 어절 1,000개마다 제안을 눌러 고친 횟수예요.");

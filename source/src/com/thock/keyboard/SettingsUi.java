@@ -265,10 +265,13 @@ public final class SettingsUi {
 
     private ScrollView pageScroll;
 
+    /** 한 화면에 더 많이 넣는 페이지(오타 제안)에서만: 줄·카드 간격을 줄임 */
+    private boolean compact;
+
     private LinearLayout card(LinearLayout parent, String label) {
         if (label != null) {
             TextView l = tv(label, 13, sub, true);
-            parent.addView(l, mlp(-1, -2, 8, 22, 8, 8));
+            parent.addView(l, mlp(-1, -2, 8, compact ? 12 : 22, 8, compact ? 5 : 8));
         }
         LinearLayout c = col();
         c.setBackground(round(card, 22));
@@ -299,9 +302,10 @@ public final class SettingsUi {
     /** Menu row: icon, title, summary, chevron. */
     private View navRow(LinearLayout c, int iconType, String title, String summary, Runnable go) {
         LinearLayout r = row();
-        r.setPadding(dp(12), dp(12), dp(12), dp(12));
+        int pv = compact ? 7 : 12;
+        r.setPadding(dp(12), dp(pv), dp(12), dp(pv));
         ripple(r, round(Color.TRANSPARENT, 18), 18);
-        r.addView(iconBubble(iconType), mlp(dp(42), dp(42), 0, 0, 14, 0));
+        r.addView(iconBubble(iconType), mlp(dp(compact ? 36 : 42), dp(compact ? 36 : 42), 0, 0, 14, 0));
         LinearLayout t = col();
         t.addView(tv(title, 16, text, true));
         if (summary != null && !summary.isEmpty()) {
@@ -346,11 +350,12 @@ public final class SettingsUi {
 
     private Switch switchRow(LinearLayout c, String title, String desc, boolean on, Bool onChange) {
         LinearLayout r = row();
-        r.setPadding(dp(14), dp(14), dp(10), dp(14));
+        int pv = compact ? 9 : 14;
+        r.setPadding(dp(14), dp(pv), dp(10), dp(pv));
         ripple(r, round(Color.TRANSPARENT, 18), 18);
         LinearLayout t = col();
         t.addView(tv(title, 16, text, true));
-        if (desc != null) t.addView(tv(desc, 13, sub, false), mlp(-1, -2, 0, 3, 0, 0));
+        if (desc != null) t.addView(tv(desc, 13, sub, false), mlp(-1, -2, 0, compact ? 1 : 3, 0, 0));
         r.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
         Switch s = toggle(on);
         r.addView(s, mlp(-2, -2, 12, 0, 0, 0));
@@ -569,20 +574,22 @@ public final class SettingsUi {
                     () -> a.startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
             divider(ks);
         }
+        compact = true;           // 키보드 전환 줄을 조금 낮게
         navRow(ks, LineIcon.SWAP, "키보드 전환", def ? "도록 키보드 사용 중" : "눌러서 도록 키보드로 바꾸기", this::pickIme);
+        compact = false;
 
-        // test
-        LinearLayout t = card(b, "타자 테스트");
+        // 타자 테스트: 키보드 전환 바로 아래 (같은 카드)
+        divider(ks);
         EditText et = new EditText(a);
-        et.setHint("여기를 눌러서 쳐 보세요");
+        et.setHint("타자 테스트: 여기를 눌러서 쳐 보세요");
         et.setHintTextColor(sub);
         et.setTextColor(text);
-        et.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        et.setMinLines(3);
+        et.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        et.setMinLines(2);
         et.setGravity(Gravity.TOP | Gravity.START);
         et.setBackground(null);
-        et.setPadding(dp(14), dp(12), dp(14), dp(12));
-        t.addView(et);
+        et.setPadding(dp(14), dp(8), dp(14), dp(8));
+        ks.addView(et);
 
         // hero: current switch
         String[] cur = currentSwitch();
@@ -1414,30 +1421,34 @@ public final class SettingsUi {
 
     private View pageTypo() {
         Typo.load(a);
-        LinearLayout b = scaffold("오타 제안 · 자동 교정", "쿼티 한글에서 스페이스 대신 ㅠ·ㅜ 같은 윗줄 키가 눌린 오타를 찾아요", true);
+        compact = true;
+        LinearLayout b = scaffold("오타 제안 · 자동 교정", null, true);
+        b.addView(tv("쿼티 한글의 스페이스↔ㅠ·ㅜ 뒤바뀜을 찾아요. ㅈ/ㄷ·ㅓ/ㅏ처럼 옆 키를 누른 오타는 지우고 다시 칠 때 모아서 자동 교정에 등록할 수 있어요", 12.5f, sub, false), mlp(-1, -2, 4, 3, 4, 0));
         LinearLayout c = card(b, null);
-        switchRow(c, "오타 제안", "고칠 말을 툴바에 보여주고, 누르면 바꿔요", Typo.on, v -> { Typo.on = v; Typo.saveFlags(a); });
+        ((LinearLayout.LayoutParams) c.getLayoutParams()).topMargin = dp(12);
+        switchRow(c, "오타 제안", "고칠 말을 툴바에 보여줘요", Typo.on, v -> { Typo.on = v; Typo.saveFlags(a); });
         divider(c);
-        switchRow(c, "ㅠ·ㅜ 오타 자동 교정", "스페이스 대신 ㅠ·ㅜ가 눌린 오타(장고규가기 → 장곡 가기)는 확실하면 띄어쓰기·마침표·엔터를 누를 때 바로 고쳐요. 바로 지우기를 누르면 되돌아가요", Typo.autoUU, v -> { Typo.autoUU = v; Typo.saveFlags(a); });
+        switchRow(c, "ㅠ·ㅜ 오타 자동 교정", "확실하면 바로 고쳐요 (장고규가기 → 장곡 가기)", Typo.autoUU, v -> { Typo.autoUU = v; Typo.saveFlags(a); });
         divider(c);
-        switchRow(c, "그 밖의 오타도 자동 교정", "아주 확실할 때만 띄어쓰기·마침표·엔터를 누르는 순간 스스로 바꿔요. 바로 지우기를 누르면 되돌아가요", Typo.auto, v -> { Typo.auto = v; Typo.saveFlags(a); });
+        switchRow(c, "그 밖의 오타도 자동 교정", "아주 확실할 때만 바로 고쳐요", Typo.auto, v -> { Typo.auto = v; Typo.saveFlags(a); });
         divider(c);
-        switchRow(c, "자동 학습", "지우고 다시 친 글자로 오타를 모으고, 고친 터치를 터치 보정 기록에 더해요", Typo.learn, v -> { Typo.learn = v; Typo.saveFlags(a); });
+        switchRow(c, "자동 학습", "지우고 다시 친 오타를 모아요", Typo.learn, v -> { Typo.learn = v; Typo.saveFlags(a); });
         LinearLayout m = card(b, "내 오타");
-        navRow(m, LineIcon.PENCIL, "자동 학습한 오타", Typo.learned.isEmpty() ? "지우고 다시 친 오타가 여기에 모여요" : Typo.learned.size() + "개 · 눌러서 자동 교정에 등록", () -> { learnQuery = ""; open("typo_learned"); });
+        navRow(m, LineIcon.PENCIL, "자동 학습한 오타", Typo.learned.isEmpty() ? "아직 없어요" : Typo.learned.size() + "개 · 눌러서 등록", () -> { learnQuery = ""; open("typo_learned"); });
         divider(m);
-        navRow(m, LineIcon.SWAP, "자동 교정", Typo.rules.isEmpty() ? "오타 → 바꿀 말을 정해 두기" : Typo.rules.size() + "개", () -> { ruleQuery = ""; open("typo_rules"); });
+        navRow(m, LineIcon.SWAP, "자동 교정", Typo.rules.isEmpty() ? "오타 → 바꿀 말 등록" : Typo.rules.size() + "개", () -> { ruleQuery = ""; open("typo_rules"); });
         Spell.load(a);
         LinearLayout sc = card(b, "맞춤법");
-        switchRow(sc, "맞춤법 제안", "자주 틀리는 맞춤법(되요 → 돼요, 몇일 → 며칠 등)을 툴바에 보여주고, 누르면 바꿔요. 천지인·나랏글·쿼티 모든 한글 자판에서 동작하고, 자동으로 바꾸지는 않아요",
-                Spell.on, v -> { Spell.on = v; Spell.save(a); });
+        switchRow(sc, "맞춤법 제안", "틀린 맞춤법을 툴바에 제안해요", Spell.on, v -> { Spell.on = v; Spell.save(a); });
         divider(sc);
         int spellOff = 0;
         for (Spell.Item it : Spell.items) if (!Spell.enabled(it)) spellOff++;
         navRow(sc, LineIcon.SWAP, "맞춤법 목록", Spell.items.size() + "개" + (spellOff > 0 ? " · 꺼짐 " + spellOff + "개" : ""), () -> { spellQuery = ""; spellOffOnly = false; spellCat = null; open("spell"); });
+        compact = false;
         note(b, "비밀번호·이메일·주소 입력칸에서는 제안도 학습도 하지 않아요. 배운 내용은 이 폰 안에만 저장돼요 (이 앱은 인터넷 권한이 없어요).");
         note(b, "ㅠㅠ, ㅜㅜ 처럼 같은 키를 겹쳐 친 것은 건드리지 않아요.");
         note(b, "오타 제안과 맞춤법 제안이 같이 생기면 오타 제안을 먼저 보여줘요.");
+        note(b, "ㅠ·ㅜ·그 밖의 자동 교정은 바로 지우기를 누르면 되돌아가요. 맞춤법 제안은 천지인·나랏글·쿼티 모든 한글 자판에서 동작하고, 자동으로 바꾸지는 않아요.");
         return (View) b.getParent();
     }
 

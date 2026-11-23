@@ -12,7 +12,12 @@ javac --release 8 -nowarn -cp "$AJ" -encoding UTF-8 -d "$W/cls" "$S"/src/com/tho
 for c in Prefs SoundEngine SoundKind Haptics ClipHistory; do rm -f "$W/cls/com/thock/keyboard/$c.class"; done
 java -cp "$R8" com.android.tools.r8.D8 --release --min-api 26 --lib "$AJ" --output "$W/dex" $(find "$W/cls" -name "*.class")
 (cd "$W" && unzip -q -o "$BASE" AndroidManifest.xml -d man)
-"$PY" "$H/axml_add_queries.py" "$W/man/AndroidManifest.xml" "$W/AndroidManifest.xml" com.google.android.googlequicksearchbox com.google.android.tts
+"$PY" "$H/axml_add_queries.py" "$W/man/AndroidManifest.xml" "$W/AndroidManifest.q.xml" com.google.android.googlequicksearchbox com.google.android.tts
+# 버전: 설치 화면·설정 맨 아래에 보이는 이름과 번호를 빌드마다 올린다 (빌드 번호 = git 커밋 수 + 1, 이 빌드를 커밋하면 그 번호가 됨)
+N=$(git -C "$S" rev-list --count HEAD 2>/dev/null || echo 0); N=$((N + 1))
+VN="${VERSION_NAME:-3.33-mod $(date +%Y.%m.%d) ($N)}"; VC="${VERSION_CODE:-$((1000 + N))}"
+"$PY" "$H/axml_set_version.py" "$W/AndroidManifest.q.xml" "$W/AndroidManifest.xml" "$VN" "$VC"
+echo "version: $VN / $VC"
 "$PY" "$H/spell_build.py" "$H/spell_list.tsv" "$W/spell.tsv"      # 맞춤법 목록 원본 → 앱용
 "$PY" "$H/repack.py" "$BASE" "$W/unsigned.apk" "classes4.dex=$W/dex/classes.dex" "AndroidManifest.xml=$W/AndroidManifest.xml" "assets/typo_lm.bin=$H/typo_lm.bin" "assets/spell.tsv=$W/spell.tsv" "assets/emoji.tsv=$H/emoji.tsv"
 javac -nowarn -encoding UTF-8 -cp "$SIG" -d "$W/sign" "$H"/sign/*.java

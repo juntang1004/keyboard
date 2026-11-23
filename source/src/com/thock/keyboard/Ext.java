@@ -2851,6 +2851,7 @@ public final class Ext {
                     }
                     if (!fired[0]) {
                         boolean bd = typoBoundary(code, kk.label);
+                        if (bd && svc != null && Typo.usable(typoHost)) Typo.countWord(svc);   // 1,000어절당 교정 횟수의 분모
                         Spell.beforeKey(spellHost, bd);
                         int seq = Typo.fixSeq;
                         typoBefore(code, kk.label);

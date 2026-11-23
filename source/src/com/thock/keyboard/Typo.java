@@ -58,7 +58,9 @@ public final class Typo {
     /** 앞으로 무시: 같은 오타 쌍이 다시 모여도 목록에 올리지 않음 */
     static final Set<String> ignored = new HashSet<>();
     /** 자동 교정 규칙마다 등록 뒤 실제로 고친 횟수 (바로 되돌린 것도 셈) */
-    static final Map<String, Integer> ruleHits = new HashMap<>();
+    static final FixStats ruleStats = new FixStats();
+    /** 달별 친 어절 수 (띄어쓰기·엔터·마침표 등으로 끝난 어절): 1,000어절당 교정 횟수의 분모 */
+    static final java.util.TreeMap<Integer, Integer> wordsMonth = new java.util.TreeMap<>();
     private static int dirty;
 
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences("thock_ext", Context.MODE_PRIVATE); }
@@ -80,7 +82,10 @@ public final class Typo {
             s = p.getString("typo_learned", null);
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); learned.put(k, o.getInt(k)); } }
             s = p.getString("typo_rule_hits", null);
-            if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); ruleHits.put(k, o.getInt(k)); } }
+            String rs = p.getString("typo_rule_stats", null);
+            if (rs != null) ruleStats.decode(rs);
+            else if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); ruleStats.seedTotal(k, o.getInt(k)); } }   // 예전 누적 횟수
+            FixStats.decodeMonths(p.getString("typo_words_month", null), wordsMonth);
             s = p.getString("typo_ignored", null);
             if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) ignored.add(a.getString(i)); }
             cleanLearned();         // 예전에 모인 것 중 이제 모으지 않는 쌍 정리
@@ -106,10 +111,9 @@ public final class Typo {
             for (Map.Entry<String, Integer> e : learned.entrySet()) l.put(e.getKey(), e.getValue());
             JSONArray ig = new JSONArray();
             for (String s : ignored) ig.put(s);
-            JSONObject rh = new JSONObject();
-            for (Map.Entry<String, Integer> e : ruleHits.entrySet()) if (rules.containsKey(e.getKey())) rh.put(e.getKey(), e.getValue());
+            for (java.util.Iterator<String> it = ruleStats.recs.keySet().iterator(); it.hasNext(); ) if (!rules.containsKey(it.next())) it.remove();
             sp(c).edit().putString("typo_words", w.toString()).putString("typo_rules", r.toString()).putString("typo_block", b.toString())
-                    .putString("typo_learned", l.toString()).putString("typo_ignored", ig.toString()).putString("typo_rule_hits", rh.toString()).apply();
+                    .putString("typo_learned", l.toString()).putString("typo_ignored", ig.toString()).putString("typo_rule_stats", ruleStats.encode()).putString("typo_words_month", FixStats.encodeMonths(wordsMonth)).remove("typo_rule_hits").apply();
             dirty = 0;
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "save", t); }
     }
@@ -195,11 +199,22 @@ public final class Typo {
     static boolean addRule(String typo, String right) {
         if (typo == null || right == null || typo.isEmpty() || right.isEmpty() || typo.equals(right) || jamoOnly(typo) || typo.length() < 2) return false;
         rules.put(typo, right);
-        ruleHits.put(typo, 0);
+        ruleStats.remove(typo);
         return true;
     }
 
-    static void removeRule(String typo) { rules.remove(typo); ruleHits.remove(typo); }
+    static void removeRule(String typo) { rules.remove(typo); ruleStats.remove(typo); }
+
+    /** 어절 하나가 끝남 (경계 키). 저장은 모아서 */
+    static void countWord(Context c) {
+        int m = FixStats.thisMonth();
+        Integer n = wordsMonth.get(m);
+        wordsMonth.put(m, n == null ? 1 : n + 1);
+        while (wordsMonth.size() > FixStats.KEEP_MONTHS) wordsMonth.remove(wordsMonth.firstKey());
+        if (++dirty >= 40 && c != null) saveData(c);
+    }
+
+    static int words(int yyyymm) { Integer n = wordsMonth.get(yyyymm); return n == null ? 0 : n; }
 
     /** 홀로 선 자모(ㄱ~ㅣ)가 들어 있나: 이런 말은 맞는 말일 수 없어서 어절 어디에 있어도 고친다 */
     static boolean hasLoneJamo(String s) {
@@ -646,8 +661,7 @@ public final class Typo {
                 if (m != null) {
                     replaceTail(h, m[0], m[1], null);
                     if (lastFix != null) lastFix.ruleKey = m[2];
-                    Integer hc = ruleHits.get(m[2]);
-                    ruleHits.put(m[2], hc == null ? 1 : hc + 1);
+                    ruleStats.hit(m[2], FixStats.today(), FixStats.thisMonth());
                     if (++dirty >= 5) saveData(c);
                     clearPending();
                     return;

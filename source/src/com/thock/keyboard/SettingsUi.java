@@ -1596,7 +1596,8 @@ public final class SettingsUi {
         back.setOnClickListener(v -> back());
         pg.addView(back, mlp(dp(44), dp(44), -8, 0, 0, 4));
         pg.addView(tv("맞춤법 목록", 26, text, true), mlp(-1, -2, 4, 0, 4, 0));
-        pg.addView(tv("표준어에 없어서 언제나 틀린 형태만 모았어요. 항목을 끄면 다시 제안하지 않아요", 14, sub, false), mlp(-1, -2, 4, 4, 4, 0));
+        pg.addView(tv("표준어에 없어서 언제나 틀린 형태만 모았어요. 항목을 끄면 다시 제안하지 않아요", 13, sub, false), mlp(-1, -2, 4, 2, 4, 0));
+        pg.addView(rateView("맞춤법 제안 수락", Spell.stats), mlp(-1, -2, 0, 8, 0, 0));
         LinearLayout lc = card(pg, null);
         final EditText q = field("검색 (예: 되요, 베개)");
         q.setText(spellQuery);
@@ -1623,6 +1624,9 @@ public final class SettingsUi {
         note(inner, "바꾼 직후 지우기를 누르면 되돌아가고, 그 항목은 \"되돌려서 꺼짐\"이 돼요. 여기서 다시 켤 수 있어요.");
         note(inner, "'되/돼'·'안/않'·'로서/로써'처럼 앞뒤 문맥을 봐야 하는 맞춤법과 띄어쓰기는 검사하지 않아요. ㅔ·ㅐ 분류에는 재일/제일처럼 둘 다 있는 말은 넣지 않았어요.");
         note(inner, "자료: 국립국어원 표준국어대사전·한국어 어문 규범(한글 맞춤법, 표준어 규정, 외래어 표기법), 국립국어원 '틀리기 쉬운 우리말' 안내 등.");
+        note(inner, "횟수는 툴바의 맞춤법 제안을 눌러 고친 것만 세요 (제안을 무시한 실수는 빠져요). 위 요약은 이번 달에 친 어절 1,000개마다 제안을 눌러 고친 횟수예요.");
+        inner.addView(ghostBtn("맞춤법 기록 지우기", RED, () -> confirmClear("맞춤법 제안 횟수와 날짜 기록을 모두 지울까요? 목록과 켜고 끈 설정은 그대로 남아요.",
+                () -> { Spell.stats.clear(); Spell.save(a); show("spell", false); })), mlp(-1, -2, 0, 12, 0, 12));
         sv.addView(inner, new FrameLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, 0, 1f);
         sl.setMargins(0, dp(4), 0, 0);
@@ -1648,7 +1652,8 @@ public final class SettingsUi {
             for (int i = 0; !hit && i < it.wrong.length; i++) hit = it.wrong[i].contains(spellQuery) || it.right[i].contains(spellQuery);
             if (hit) ks.add(it);
         }
-        java.util.Collections.sort(ks, (x, y) -> sortCmp(spellSort, Spell.hitsOf(x), Spell.hitsOf(y), x.disp, y.disp));
+        final int today = FixStats.today();
+        java.util.Collections.sort(ks, (x, y) -> sortCmp(spellSort, Spell.stats, today, x.id, y.id, x.disp, y.disp));
         if (spellCount != null) {
             int total = 0;
             for (Spell.Item it : Spell.items) if ((!spellOffOnly || !Spell.enabled(it)) && (spellCat == null || spellCat.equals(it.cat))) total++;
@@ -1659,7 +1664,7 @@ public final class SettingsUi {
             final Spell.Item it = ks.get(i);
             final boolean en = Spell.enabled(it);
             String st = en ? "켜짐" : Spell.block.contains(it.id) ? "되돌려서 꺼짐" : "꺼짐";
-            String desc = st + " · " + Spell.hitsOf(it) + "번 고침" + (it.wrong.length > 1 ? " · 형태 " + it.wrong.length + "개" : "");
+            String desc = st + " · " + Spell.stats.line(it.id, today) + (it.wrong.length > 1 ? " · 형태 " + it.wrong.length + "개" : "");
             list.addView(toggleRow(it.disp, desc, en ? "끄기" : "켜기", en ? RED : ACCENT, () -> {
                 if (en) Spell.off.add(it.id); else { Spell.off.remove(it.id); Spell.block.remove(it.id); }
                 Spell.save(a);
@@ -1752,27 +1757,52 @@ public final class SettingsUi {
         return r;
     }
 
-    /** 정렬 상태: 0 고친 횟수 많은 순(기본), 1 적은 순, 2 가나다, 3 가나다 거꾸로 */
+    /** 정렬: 0 최근 30일 많은 순(기본), 1 최근 30일 적은 순, 2 전체 많은 순, 3 전체 적은 순, 4 오래 안 쓴 순, 5 가나다, 6 가나다 거꾸로 */
     private int ruleSort, spellSort;
 
-    /** "총 N개" + [고친 횟수 ▼/▲] [가나다 ▲/▼]. 같은 버튼을 다시 누르면 방향이 바뀜 */
+    /** "총 N개 등록" 줄 + 정렬 칩 줄 (같은 칩을 다시 누르면 방향이 바뀜). 개수 글자를 돌려준다 */
     private TextView sortBar(LinearLayout parent, int state, java.util.function.IntConsumer set) {
-        LinearLayout hr = row();
-        hr.setGravity(Gravity.CENTER_VERTICAL);
         TextView count = tv("", 13, sub, true);
-        hr.addView(count, new LinearLayout.LayoutParams(0, -2, 1f));
-        boolean byHits = state == 0 || state == 1;
-        hr.addView(chipBtn("고친 횟수 " + (state == 1 ? "▲" : "▼"), byHits, () -> set.accept(state == 0 ? 1 : 0)), mlp(-2, -2, 0, 0, 6, 0));
-        hr.addView(chipBtn("가나다 " + (state == 3 ? "▼" : "▲"), !byHits, () -> set.accept(state == 2 ? 3 : 2)));
-        parent.addView(hr, mlp(-1, -2, 8, 12, 0, 8));
+        parent.addView(count, mlp(-1, -2, 8, 12, 0, 4));
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(a);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout hr = row();
+        hr.addView(chipBtn("최근 30일 " + (state == 1 ? "▲" : "▼"), state == 0 || state == 1, () -> set.accept(state == 0 ? 1 : 0)), mlp(-2, -2, 0, 0, 6, 0));
+        hr.addView(chipBtn("전체 " + (state == 3 ? "▲" : "▼"), state == 2 || state == 3, () -> set.accept(state == 2 ? 3 : 2)), mlp(-2, -2, 0, 0, 6, 0));
+        hr.addView(chipBtn("오래 안 쓴 순", state == 4, () -> set.accept(4)), mlp(-2, -2, 0, 0, 6, 0));
+        hr.addView(chipBtn("가나다 " + (state == 6 ? "▼" : "▲"), state == 5 || state == 6, () -> set.accept(state == 5 ? 6 : 5)));
+        hs.addView(hr);
+        parent.addView(hs, mlp(-1, -2, 4, 0, 0, 8));
         return count;
     }
 
-    private static int sortCmp(int state, int hx, int hy, String nx, String ny) {
-        if (state == 0 && hx != hy) return Integer.compare(hy, hx);
-        if (state == 1 && hx != hy) return Integer.compare(hx, hy);
-        return state == 3 ? ny.compareTo(nx) : nx.compareTo(ny);
+    private static int sortCmp(int state, FixStats st, int today, String kx, String ky, String nx, String ny) {
+        int c = 0;
+        switch (state) {
+            case 0: c = Integer.compare(st.recent(ky, today, 30), st.recent(kx, today, 30)); if (c == 0) c = Integer.compare(st.total(ky), st.total(kx)); break;
+            case 1: c = Integer.compare(st.recent(kx, today, 30), st.recent(ky, today, 30)); if (c == 0) c = Integer.compare(st.total(kx), st.total(ky)); break;
+            case 2: c = Integer.compare(st.total(ky), st.total(kx)); break;
+            case 3: c = Integer.compare(st.total(kx), st.total(ky)); break;
+            case 4: c = Integer.compare(st.unusedDays(ky, today), st.unusedDays(kx, today)); break;
+        }
+        if (c != 0) return c;
+        return state == 6 ? ny.compareTo(nx) : nx.compareTo(ny);
     }
+
+    /** 위 요약 줄: 이번 달 1,000어절당 교정 횟수 (지난달과 비교) */
+    private TextView rateView(String what, FixStats st) {
+        int m = FixStats.thisMonth(), pm = FixStats.prevMonth(m);
+        TextView t = tv(FixStats.rateLine(what, st.month(m), Typo.words(m), st.month(pm), Typo.words(pm)), 13, text, true);
+        t.setBackground(round(soft, 14));
+        t.setPadding(dp(12), dp(8), dp(12), dp(8));
+        return t;
+    }
+
+    private void confirmClear(String msg, Runnable go) {
+        new android.app.AlertDialog.Builder(a).setMessage(msg)
+                .setPositiveButton("지우기", (d, w) -> go.run()).setNegativeButton("취소", null).show();
+    }
+
 
 
     private View pageTypoRules() {
@@ -1780,6 +1810,7 @@ public final class SettingsUi {
         LinearLayout b = scaffold("자동 교정", null, true);
         b.addView(tv("오타를 치고 띄어쓰기·마침표·엔터를 누르면 바꿀 말로 바로 바뀌어요. 어절이 오타로 시작하면 뒤 글자는 그대로 두고 바꾸고 (고ㅓ일 → 과일), "
                 + "'ㅓ'처럼 홀로 선 자모가 든 오타는 어절 가운데에 있어도 바꿔요 (사고ㅓ주스 → 사과주스).", 12.5f, sub, false), mlp(-1, -2, 4, 4, 4, 0));
+        b.addView(rateView("자동 교정", Typo.ruleStats), mlp(-1, -2, 0, 10, 0, 0));
         // 한 줄: 오타 · 바꿀 말 · 등록
         LinearLayout add = card(b, null);
         LinearLayout ar = row();
@@ -1809,6 +1840,9 @@ public final class SettingsUi {
         lc.addView(list);
         onText(q, () -> { ruleQuery = q.getText().toString().trim(); fillRules(list); });
         fillRules(list);
+        note(b, "최근 30일 · 전체 · 마지막으로 고친 날을 보여줘요. 전체는 끝까지 세고 1000번부터 999+로 보여요. 위 요약은 이번 달에 친 어절 1,000개마다 자동 교정이 몇 번 일어났는지예요 (줄수록 덜 틀린 것).");
+        b.addView(ghostBtn("자동 교정 기록 지우기", RED, () -> confirmClear("자동 교정 횟수와 날짜 기록을 모두 지울까요? 규칙은 그대로 남아요.",
+                () -> { Typo.ruleStats.clear(); Typo.saveData(a); show("typo_rules", false); })), mlp(-1, -2, 0, 12, 0, 0));
         return (View) b.getParent();
     }
 
@@ -1819,14 +1853,13 @@ public final class SettingsUi {
         List<String> ks = new ArrayList<>();
         for (String k : Typo.rules.keySet()) if (ruleQuery.isEmpty() || k.contains(ruleQuery) || Typo.rules.get(k).contains(ruleQuery)) ks.add(k);
         java.util.Collections.sort(ks);
-        java.util.Collections.sort(ks, (x, y) -> sortCmp(ruleSort,
-                Typo.ruleHits.containsKey(x) ? Typo.ruleHits.get(x) : 0, Typo.ruleHits.containsKey(y) ? Typo.ruleHits.get(y) : 0, x, y));
+        final int today = FixStats.today();
+        java.util.Collections.sort(ks, (x, y) -> sortCmp(ruleSort, Typo.ruleStats, today, x, y, x, y));
         if (ruleCount != null) ruleCount.setText("총 " + Typo.rules.size() + "개 등록" + (ks.size() != Typo.rules.size() ? " · 찾은 것 " + ks.size() + "개" : ""));
         if (ks.isEmpty()) list.addView(tv(ruleQuery.isEmpty() ? "아직 없어요." : "'" + ruleQuery + "' 에 맞는 것이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
         for (int i = 0; i < ks.size() && i < 200; i++) {
             final String k = ks.get(i);
-            Integer hits = Typo.ruleHits.get(k);
-            String desc = (Typo.jamoOnly(k) ? "자음·모음만으로 된 오타라 동작하지 않아요 · " : "") + "등록 뒤 " + (hits == null ? 0 : hits) + "번 고침";
+            String desc = (Typo.jamoOnly(k) ? "자음·모음만으로 된 오타라 동작하지 않아요 · " : "") + Typo.ruleStats.line(k, today);
             list.addView(itemRow(k + "  →  " + Typo.rules.get(k), desc, () -> { Typo.removeRule(k); Typo.saveData(a); fillRules(list); }));
         }
         if (ks.size() > 200) list.addView(tv("외 " + (ks.size() - 200) + "개 · 검색으로 찾아 주세요.", 13, sub, false), mlp(-1, -2, 14, 8, 14, 10));

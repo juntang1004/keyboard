@@ -103,6 +103,21 @@ public class FixLearnTest {
             else System.out.println("ok   규칙 " + c[0] + ": " + g);
         }
 
+        // ---- 자음·모음만으로 된 쌍은 모으지도, 규칙으로 쓰지도 않음
+        Class<?> T = Class.forName("com.thock.keyboard.Typo");
+        Method addPair = T.getDeclaredMethod("addPair", Class.forName("android.content.Context"), String.class, String.class); addPair.setAccessible(true);
+        Field fl = T.getDeclaredField("learned"); fl.setAccessible(true);
+        @SuppressWarnings("unchecked") Map<String, Integer> learned = (Map<String, Integer>) fl.get(null);
+        learned.clear();
+        addPair.invoke(null, null, "ㄹ", "ㅎ"); addPair.invoke(null, null, "ㅂㅈ", "ㅈㅂ"); addPair.invoke(null, null, "욘규", "연규");
+        if (!learned.keySet().toString().equals("[욘규	연규]")) { fail++; System.out.println("FAIL 자모 쌍 거르기: " + learned.keySet()); } else System.out.println("ok   자모 쌍 거르기: " + learned.keySet());
+        rules.put("ㄹ", "ㅎ");
+        String[] m = (String[]) mr.invoke(null, "ㄹ");
+        if (m != null) { fail++; System.out.println("FAIL 자모 규칙 무시"); } else System.out.println("ok   자모 규칙 무시");
+        Method addRule = T.getDeclaredMethod("addRule", String.class, String.class); addRule.setAccessible(true);
+        boolean r1 = (Boolean) addRule.invoke(null, "ㅂ", "ㅈ"), r2 = (Boolean) addRule.invoke(null, "부담오", "부담고");
+        if (r1 || !r2) { fail++; System.out.println("FAIL addRule " + r1 + " " + r2); } else System.out.println("ok   addRule: ㅂ 거부, 부담오 등록");
+
         System.out.println(fail == 0 ? "OK" : "FAIL " + fail);
         if (fail > 0) System.exit(1);
     }

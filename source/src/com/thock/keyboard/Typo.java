@@ -57,6 +57,8 @@ public final class Typo {
     static final Map<String, Integer> learned = new HashMap<>();
     /** 앞으로 무시: 같은 오타 쌍이 다시 모여도 목록에 올리지 않음 */
     static final Set<String> ignored = new HashSet<>();
+    /** 자동 교정 규칙마다 등록 뒤 실제로 고친 횟수 (되돌린 것은 뺌) */
+    static final Map<String, Integer> ruleHits = new HashMap<>();
     private static int dirty;
 
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences("thock_ext", Context.MODE_PRIVATE); }
@@ -78,6 +80,13 @@ public final class Typo {
             if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) block.add(a.getString(i)); }
             s = p.getString("typo_learned", null);
             if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); learned.put(k, o.getInt(k)); } }
+            s = p.getString("typo_rule_hits", null);
+            if (s != null) { JSONObject o = new JSONObject(s); for (Iterator<String> it = o.keys(); it.hasNext(); ) { String k = it.next(); ruleHits.put(k, o.getInt(k)); } }
+            // 자음·모음만으로 된 오타 쌍은 타자를 망가뜨리니 모으지 않는다 (예전에 모인 것도 정리)
+            for (Iterator<String> it = learned.keySet().iterator(); it.hasNext(); ) {
+                String k = it.next(); int t = k.indexOf('	');
+                if (t < 0 || jamoOnly(k.substring(0, t)) || jamoOnly(k.substring(t + 1))) it.remove();
+            }
             s = p.getString("typo_ignored", null);
             if (s != null) { JSONArray a = new JSONArray(s); for (int i = 0; i < a.length(); i++) ignored.add(a.getString(i)); }
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "load", t); }
@@ -102,8 +111,10 @@ public final class Typo {
             for (Map.Entry<String, Integer> e : learned.entrySet()) l.put(e.getKey(), e.getValue());
             JSONArray ig = new JSONArray();
             for (String s : ignored) ig.put(s);
+            JSONObject rh = new JSONObject();
+            for (Map.Entry<String, Integer> e : ruleHits.entrySet()) if (rules.containsKey(e.getKey())) rh.put(e.getKey(), e.getValue());
             sp(c).edit().putString("typo_words", w.toString()).putString("typo_rules", r.toString()).putString("typo_block", b.toString())
-                    .putString("typo_learned", l.toString()).putString("typo_ignored", ig.toString()).apply();
+                    .putString("typo_learned", l.toString()).putString("typo_ignored", ig.toString()).putString("typo_rule_hits", rh.toString()).apply();
             dirty = 0;
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "save", t); }
     }
@@ -111,6 +122,7 @@ public final class Typo {
     /** 오타 쌍 하나를 모은다 (무시했거나 이미 자동 교정에 있으면 넘어감) */
     static void addPair(Context c, String typo, String right) {
         if (typo == null || right == null || typo.equals(right)) return;
+        if (jamoOnly(typo) || jamoOnly(right)) return;
         String k = typo + "	" + right;
         if (ignored.contains(k) || right.equals(rules.get(typo))) return;
         Integer n = learned.get(k);
@@ -122,6 +134,23 @@ public final class Typo {
         }
         if (c != null) saveData(c);
     }
+
+    /** 자음·모음만으로 된 말 (ㄹ, ㅂㅈ 등): 자동 교정에 넣으면 그 자모를 칠 때마다 바뀌어 버린다 */
+    static boolean jamoOnly(String s) {
+        if (s == null || s.isEmpty()) return true;
+        for (int i = 0; i < s.length(); i++) { char ch = s.charAt(i); if (ch < 0x3131 || ch > 0x3163) return false; }
+        return true;
+    }
+
+    /** 자동 교정 규칙 등록 (등록할 수 없는 것이면 false). 고친 횟수는 0부터 */
+    static boolean addRule(String typo, String right) {
+        if (typo == null || right == null || typo.isEmpty() || right.isEmpty() || typo.equals(right) || jamoOnly(typo)) return false;
+        rules.put(typo, right);
+        ruleHits.put(typo, 0);
+        return true;
+    }
+
+    static void removeRule(String typo) { rules.remove(typo); ruleHits.remove(typo); }
 
     /** 홀로 선 자모(ㄱ~ㅣ)가 들어 있나: 이런 말은 맞는 말일 수 없어서 어절 어디에 있어도 고친다 */
     static boolean hasLoneJamo(String s) {
@@ -137,13 +166,13 @@ public final class Typo {
     static String[] matchRule(String word) {
         String best = null; int at = -1;
         for (String k : rules.keySet()) {
-            if (k.isEmpty() || (best != null && k.length() <= best.length())) continue;
+            if (jamoOnly(k) || (best != null && k.length() <= best.length())) continue;
             int i = word.startsWith(k) ? 0 : hasLoneJamo(k) ? word.indexOf(k) : -1;
             if (i >= 0) { best = k; at = i; }
         }
         if (best == null) return null;
         String old = word.substring(at);
-        return new String[]{old, rules.get(best) + old.substring(best.length())};
+        return new String[]{old, rules.get(best) + old.substring(best.length()), best};
     }
 
     static boolean known(String w) {
@@ -478,7 +507,7 @@ public final class Typo {
     }
 
     // ------------------------------------------------------------------ 제안 · 적용 · 되돌리기
-    private static final class Done { String oldText, newText, blockKey; long time; boolean armed = true; }
+    private static final class Done { String oldText, newText, blockKey, ruleKey; long time; boolean armed = true; }
     private static Done lastFix;
 
     /** 키를 친 뒤 잠깐 쉬면 제안을 계산한다 (타자를 늦추지 않게). */
@@ -563,11 +592,15 @@ public final class Typo {
                     String k = e.getKey();
                     if (k.indexOf(' ') < 0 || !tail.endsWith(k)) continue;
                     if (tail.length() > k.length() && !isBoundary(tail.charAt(tail.length() - k.length() - 1))) continue;
-                    m = new String[]{k, e.getValue()};
+                    m = new String[]{k, e.getValue(), k};
                     break;
                 }
                 if (m != null) {
                     replaceTail(h, m[0], m[1], null);
+                    if (lastFix != null) lastFix.ruleKey = m[2];
+                    Integer hc = ruleHits.get(m[2]);
+                    ruleHits.put(m[2], hc == null ? 1 : hc + 1);
+                    if (++dirty >= 5) saveData(c);
                     clearPending();
                     return;
                 }
@@ -620,6 +653,7 @@ public final class Typo {
             ic.endBatchEdit();
             log.clear();
             if (d.blockKey != null) { block.add(d.blockKey); saveData(c); }   // 다시는 이렇게 고치지 않는다
+            if (d.ruleKey != null) { Integer hc = ruleHits.get(d.ruleKey); if (hc != null && hc > 0) ruleHits.put(d.ruleKey, hc - 1); saveData(c); }
             return true;
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "undo", t); return false; }
     }

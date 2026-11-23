@@ -1460,7 +1460,8 @@ public final class SettingsUi {
         onText(q, () -> { learnQuery = q.getText().toString().trim(); fillLearned(list); });
         fillLearned(list);
         note(b, "예) 과를 치려다 고ㅓ가 써져서 지우기로 ㅓ를 지우고 ㅏ를 치면 \"고ㅓ → 과\"가 모여요. 지운 글자 중 바뀐 것이 원래 키와 바로 붙은 키일 때만 모아요.");
-        note(b, "앞으로 무시: 목록에서 사라지고, 같은 오타가 또 모여도 다시 올라오지 않아요. 자동 교정 등록: 자동 교정 목록으로 옮겨요.");
+        note(b, "삭제: 목록에서 지워요 (같은 오타가 또 모이면 다시 올라와요). 앞으로 무시: 목록에서 사라지고 같은 오타가 또 모여도 올라오지 않아요. 자동 교정 등록: 자동 교정 목록으로 옮겨요.");
+        note(b, "ㄹ → ㅎ 처럼 자음·모음 하나만으로 된 오타는 모으지 않아요 (자동 교정에 들어가면 그 글자를 칠 때마다 바뀌어 버려서).");
         String diag = "이번에 키보드를 켠 뒤 (쿼티 한글) 지우기 " + FixLearn.nBackspace + "번 · 지우고 다시 친 것 " + FixLearn.nChecked + "번 확인 · " + FixLearn.nLearned + "번 배움"
                 + (FixLearn.lastSkip.isEmpty() ? "" : " · 최근 건너뛴 이유: " + FixLearn.lastSkip);
         note(b, diag);
@@ -1483,12 +1484,21 @@ public final class SettingsUi {
             int tab = k.indexOf('\t');
             if (tab < 0) continue;
             final String typo = k.substring(0, tab), right = k.substring(tab + 1);
+            LinearLayout box = col();
+            box.setPadding(dp(14), dp(8), dp(6), dp(4));
+            LinearLayout t = row();
+            t.setGravity(Gravity.CENTER_VERTICAL);
+            t.addView(tv(typo + "  →  " + right, 15, text, true), new LinearLayout.LayoutParams(0, -2, 1f));
+            t.addView(tv(Typo.learned.get(k) + "번 고침", 12.5f, sub, false), mlp(-2, -2, 8, 0, 8, 0));
+            box.addView(t);
             LinearLayout r = row();
-            r.setPadding(dp(14), dp(8), dp(6), dp(8));
-            LinearLayout t = col();
-            t.addView(tv(typo + "  →  " + right, 15, text, true));
-            t.addView(tv(Typo.learned.get(k) + "번 고침", 12.5f, sub, false), mlp(-1, -2, 0, 2, 0, 0));
-            r.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+            r.setGravity(Gravity.END);
+            box.addView(r, mlp(-1, -2, 0, 2, 0, 0));
+            TextView del = tv("삭제", 13, sub, true);
+            del.setPadding(dp(8), dp(8), dp(8), dp(8));
+            ripple(del, round(Color.TRANSPARENT, 12), 12);
+            del.setOnClickListener(v -> { Typo.learned.remove(k); Typo.saveData(a); fillLearned(list); });
+            r.addView(del);
             TextView ig = tv("앞으로 무시", 13, RED, true);
             ig.setPadding(dp(8), dp(8), dp(8), dp(8));
             ripple(ig, round(Color.TRANSPARENT, 12), 12);
@@ -1498,14 +1508,14 @@ public final class SettingsUi {
             reg.setPadding(dp(8), dp(8), dp(8), dp(8));
             ripple(reg, round(Color.TRANSPARENT, 12), 12);
             reg.setOnClickListener(v -> {
-                Typo.rules.put(typo, right);
+                if (!Typo.addRule(typo, right)) { Toast.makeText(a, "자음·모음 하나만으로 된 오타는 등록할 수 없어요", Toast.LENGTH_SHORT).show(); return; }
                 Typo.learned.remove(k);
                 Typo.saveData(a);
                 Toast.makeText(a, typo + " → " + right + " 자동 교정에 등록했어요", Toast.LENGTH_SHORT).show();
                 fillLearned(list);
             });
             r.addView(reg);
-            list.addView(r);
+            list.addView(box);
         }
         if (ks.size() > 200) list.addView(tv("외 " + (ks.size() - 200) + "개 · 검색으로 찾아 주세요.", 13, sub, false), mlp(-1, -2, 14, 8, 14, 10));
     }
@@ -1693,7 +1703,8 @@ public final class SettingsUi {
         b.addView(primaryBtn("추가", () -> {
             String f = from.getText().toString().trim(), t = to.getText().toString().trim();
             if (f.isEmpty() || t.isEmpty() || f.equals(t) || f.length() > 30) { Toast.makeText(a, "오타와 바꿀 말을 서로 다르게 넣어 주세요 (오타는 30자까지)", Toast.LENGTH_SHORT).show(); return; }
-            Typo.rules.put(f, t);
+            if (Typo.jamoOnly(f)) { Toast.makeText(a, "자음·모음 하나만으로 된 오타는 등록할 수 없어요 (그 글자를 칠 때마다 바뀌어 버려요)", Toast.LENGTH_LONG).show(); return; }
+            Typo.addRule(f, t);
             Typo.saveData(a);
             from.setText(""); to.setText("");
             fillRules(list);
@@ -1705,7 +1716,7 @@ public final class SettingsUi {
         lc.addView(list);
         onText(q, () -> { ruleQuery = q.getText().toString().trim(); fillRules(list); });
         fillRules(list);
-        note(b, "자동 교정은 오타 제안을 꺼도 동작해요. 바뀐 직후 지우기를 누르면 되돌아가요.");
+        note(b, "자동 교정은 오타 제안을 꺼도 동작해요. 바뀐 직후 지우기를 누르면 되돌아가고, 고친 횟수에서도 빠져요.");
         note(b, "어절이 오타로 시작하면 뒤에 붙은 글자는 그대로 두고 바꿔요 (고ㅓ일 → 과일, 고ㅓ를 → 과를). 'ㅓ'처럼 홀로 선 자모가 든 오타는 어절 가운데에 있어도 바꿔요 (학고ㅓ → 학과).");
         return (View) b.getParent();
     }
@@ -1718,7 +1729,9 @@ public final class SettingsUi {
         if (ks.isEmpty()) list.addView(tv(ruleQuery.isEmpty() ? "아직 없어요." : "'" + ruleQuery + "' 에 맞는 것이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
         for (int i = 0; i < ks.size() && i < 200; i++) {
             final String k = ks.get(i);
-            list.addView(itemRow(k + "  →  " + Typo.rules.get(k), null, () -> { Typo.rules.remove(k); Typo.saveData(a); fillRules(list); }));
+            Integer hits = Typo.ruleHits.get(k);
+            String desc = (Typo.jamoOnly(k) ? "자음·모음만으로 된 오타라 동작하지 않아요 · " : "") + "등록 뒤 " + (hits == null ? 0 : hits) + "번 고침";
+            list.addView(itemRow(k + "  →  " + Typo.rules.get(k), desc, () -> { Typo.removeRule(k); Typo.saveData(a); fillRules(list); }));
         }
         if (ks.size() > 200) list.addView(tv("외 " + (ks.size() - 200) + "개 · 검색으로 찾아 주세요.", 13, sub, false), mlp(-1, -2, 14, 8, 14, 10));
     }

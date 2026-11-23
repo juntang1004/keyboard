@@ -11,7 +11,7 @@ import android.graphics.drawable.Drawable;
 
 /** Minimal stroke icons on a 24x24 grid (Lucide-style: 2px stroke, round caps). */
 public final class LineIcon extends Drawable {
-    public static final int SOUND = 0, HAPTIC = 1, KEYBOARD = 2, THEME = 3, CLIPBOARD = 4, BACK = 5, CHEVRON = 6, PLAY = 7, BKSP = 8, ENTER = 9, SPACEBAR = 10, SMILE = 11, SHIFT = 12, SHIFT_LOCK = 13, PENCIL = 14, MESSAGE = 15, TRI_LEFT = 16, TRI_RIGHT = 17, SWAP = 18, TRI_UP = 19, TRI_DOWN = 20, GEAR = 21, MIC = 22;
+    public static final int SOUND = 0, HAPTIC = 1, KEYBOARD = 2, THEME = 3, CLIPBOARD = 4, BACK = 5, CHEVRON = 6, PLAY = 7, BKSP = 8, ENTER = 9, SPACEBAR = 10, SMILE = 11, SHIFT = 12, SHIFT_LOCK = 13, PENCIL = 14, MESSAGE = 15, TRI_LEFT = 16, TRI_RIGHT = 17, SWAP = 18, TRI_UP = 19, TRI_DOWN = 20, GEAR = 21, MIC = 22, SEARCH = 23, CLOCK = 24, CLOSE = 25;
 
     private final int type;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -170,6 +170,19 @@ public final class LineIcon extends Drawable {
                 c.drawArc(new RectF(5, 4, 19, 18), 0, 180, false, p);
                 c.drawLine(12, 18, 12, 22, p);
                 c.drawLine(8.5f, 22, 15.5f, 22, p);
+                break;
+            case SEARCH:
+                c.drawCircle(11, 11, 7, p);
+                c.drawLine(16, 16, 21, 21, p);
+                break;
+            case CLOCK:
+                c.drawCircle(12, 12, 9, p);
+                c.drawLine(12, 7, 12, 12, p);
+                c.drawLine(12, 12, 15.5f, 14, p);
+                break;
+            case CLOSE:
+                c.drawLine(6, 6, 18, 18, p);
+                c.drawLine(18, 6, 6, 18, p);
                 break;
             case PLAY:
                 path.moveTo(8, 5); path.lineTo(19, 12); path.lineTo(8, 19); path.close();

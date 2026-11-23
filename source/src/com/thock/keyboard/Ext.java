@@ -134,7 +134,7 @@ public final class Ext {
             return true;
         }
         // A panel is covering the keys: don't route anything to keys.
-        if (isVisible(editPanel) || isVisible(phrasePanel) || isVisible(phraseEditPanel)) return true;
+        if (isVisible(editPanel) || isVisible(phrasePanel) || isVisible(phraseEditPanel) || isVisible(emojiPanel)) return true;
 
         switch (am) {
             case MotionEvent.ACTION_DOWN:
@@ -229,6 +229,8 @@ public final class Ext {
         if (contains(editPanel, rx, ry)) return editPanel;
         if (contains(phrasePanel, rx, ry)) return phrasePanel;
         if (contains(phraseEditPanel, rx, ry)) return phraseEditPanel;
+        if (contains(emojiPanel, rx, ry)) return emojiPanel;
+        if (contains(emojiSearchBar, rx, ry)) return emojiSearchBar;
         if (contains(toolbar, rx, ry)) return toolbar;
         return null;
     }
@@ -381,6 +383,10 @@ public final class Ext {
 
         toolbar = buildToolbar(c);
         outer.addView(toolbar, new LinearLayout.LayoutParams(-1, dp(38)));
+        emojiSearch = false;
+        emojiSearchBar = buildEmojiSearchBar(c);
+        emojiSearchBar.setVisibility(View.GONE);
+        outer.addView(emojiSearchBar, new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout stack = new FrameLayout(c);
         stackRef = stack;
@@ -398,6 +404,11 @@ public final class Ext {
         phraseEditPanel = buildPhraseEditor(c);
         phraseEditPanel.setVisibility(View.GONE);
         stack.addView(phraseEditPanel, new FrameLayout.LayoutParams(-1, -1));
+        emojiPanel = buildEmojiPanel(c);
+        emojiPanel.setVisibility(View.GONE);
+        stack.addView(emojiPanel, new FrameLayout.LayoutParams(-1, -1));
+        final Context ec = c.getApplicationContext();
+        new Thread(() -> Emoji.load(ec), "emoji-load").start();
         outer.addView(stack, new LinearLayout.LayoutParams(-1, -2));
         rootRef = root;
         cj.reset();
@@ -1019,6 +1030,8 @@ public final class Ext {
         if (editPanel != null) editPanel.setVisibility(View.GONE);
         if (phrasePanel != null) phrasePanel.setVisibility(View.GONE);
         if (phraseEditPanel != null) phraseEditPanel.setVisibility(View.GONE);
+        if (emojiPanel != null) emojiPanel.setVisibility(View.GONE);
+        if (emojiSearch) exitEmojiSearch(false);
         setSelectMode(false);
         pendingDeleteIdx = -1;
         updateToolbar();
@@ -1031,6 +1044,295 @@ public final class Ext {
         } else {
             cjFinish();
             call(mOpenClipboard);
+        }
+    }
+
+
+    // ================================================================ 이모지 (삼성 키보드처럼: 위 분류 줄 고정, 이어진 격자, 검색)
+    private static View emojiPanel, emojiSearchBar;
+    private static android.widget.ListView emojiList;
+    private static final View[] emojiCatBtns = new View[Emoji.CATS];
+    private static final List<int[]> emojiRows = new ArrayList<>();     // {분류, 시작 칸(-1 = 제목 줄)}
+    private static final List<List<String>> emojiCatItems = new ArrayList<>();
+    private static final int[] emojiCatRow = new int[Emoji.CATS];
+    private static int emojiCols = 8, emojiCurCat = -1;
+    private static boolean emojiSearch;
+    private static int emojiPrevMode = -1;
+    private static final StringBuilder emojiQueryKeys = new StringBuilder();
+    private static TextView emojiQueryView;
+    private static LinearLayout emojiResults;
+
+    private static void openEmoji() {
+        finishComposing();
+        boolean was = isVisible(emojiPanel);
+        closeTools();
+        if (was) return;
+        if (!Emoji.ready()) Emoji.load(svc.getApplicationContext());
+        Emoji.loadRecent(svc);
+        fillEmojiRows();
+        if (rootRef != null) emojiPanel.setPadding(0, 0, 0, rootRef.getPaddingBottom() + dp(bottomExtra()));
+        emojiPanel.setVisibility(View.VISIBLE);
+        int start = Emoji.recent.isEmpty() ? 1 : 0;
+        emojiList.setSelection(emojiCatRow[start]);
+        markEmojiCat(start);
+    }
+
+    private static void closeEmoji() {
+        if (emojiSearch) exitEmojiSearch(false);
+        if (emojiPanel != null) emojiPanel.setVisibility(View.GONE);
+        updateToolbar();
+    }
+
+    private static TextView emojiCell(Context c) {
+        TextView t = new TextView(c);
+        t.setGravity(Gravity.CENTER);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 25);
+        t.setTextColor(cText);
+        t.setIncludeFontPadding(false);
+        StateListDrawable sl = new StateListDrawable();
+        sl.addState(new int[]{android.R.attr.state_pressed}, shape(cPressed));
+        sl.addState(new int[0], shape(Color.TRANSPARENT));
+        t.setBackground(sl);
+        noFocus(t);
+        t.setOnClickListener(v -> {
+            Object e = v.getTag();
+            if (!(e instanceof String)) return;
+            tick(v);
+            cjCommitRaw((String) e);
+            Emoji.use(svc, (String) e);
+        });
+        return t;
+    }
+
+    private static View buildEmojiPanel(Context c) {
+        LinearLayout p = new LinearLayout(c);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setBackgroundColor(cBg);
+        p.setClickable(true);
+        // 위: 자판으로 · 검색 · 분류 (스크롤해도 그대로)
+        LinearLayout top = row(c);
+        top.addView(iconBtn(c, LineIcon.KEYBOARD, Ext::closeEmoji, false), new LinearLayout.LayoutParams(0, -1, 1.1f));
+        top.addView(iconBtn(c, LineIcon.SEARCH, Ext::enterEmojiSearch, false), new LinearLayout.LayoutParams(0, -1, 1f));
+        for (int i = 0; i < Emoji.CATS; i++) {
+            final int cat = i;
+            View b;
+            if (i == 0) b = iconBtn(c, LineIcon.CLOCK, () -> jumpEmojiCat(cat), false);
+            else {
+                TextView t = new TextView(c);
+                t.setText(Emoji.CAT_ICONS[i]);
+                t.setGravity(Gravity.CENTER);
+                t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+                t.setTextColor(cText);
+                noFocus(t);
+                t.setOnClickListener(v -> { tick(v); jumpEmojiCat(cat); });
+                b = t;
+            }
+            StateListDrawable sl = new StateListDrawable();
+            sl.addState(new int[]{android.R.attr.state_pressed}, shape(cPressed));
+            sl.addState(new int[]{android.R.attr.state_selected}, shape(toolFill()));
+            sl.addState(new int[0], shape(Color.TRANSPARENT));
+            b.setBackground(sl);
+            emojiCatBtns[i] = b;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+            lp.setMargins(dp(1), dp(4), dp(1), dp(4));
+            top.addView(b, lp);
+        }
+        p.addView(top, new LinearLayout.LayoutParams(-1, dp(42)));
+        View line = new View(c);
+        line.setBackgroundColor(cSpecial);
+        p.addView(line, new LinearLayout.LayoutParams(-1, dp(1)));
+        // 아래: 이어진 격자 + 떠 있는 지우기
+        FrameLayout body = new FrameLayout(c);
+        emojiList = new android.widget.ListView(c);
+        emojiList.setDivider(null);
+        emojiList.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        emojiList.setVerticalScrollBarEnabled(false);
+        emojiList.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        emojiList.setAdapter(emojiAdapter);
+        emojiList.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            public void onScrollStateChanged(android.widget.AbsListView v, int st) {}
+            public void onScroll(android.widget.AbsListView v, int first, int n, int total) {
+                if (first >= 0 && first < emojiRows.size()) markEmojiCat(emojiRows.get(first)[0]);
+            }
+        });
+        body.addView(emojiList, new FrameLayout.LayoutParams(-1, -1));
+        View bs = iconBtn(c, LineIcon.BKSP, () -> cjPress(K_BS, null), true);
+        GradientDrawable bd = new GradientDrawable();
+        bd.setColor(cKey);
+        bd.setCornerRadius(dp(24));
+        bs.setBackground(bd);
+        bs.setElevation(dp(3));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(dp(52), dp(44), Gravity.BOTTOM | Gravity.END);
+        bl.setMargins(0, 0, dp(10), dp(10));
+        body.addView(bs, bl);
+        p.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+        return p;
+    }
+
+    private static void fillEmojiRows() {
+        emojiRows.clear();
+        emojiCatItems.clear();
+        for (int cat = 0; cat < Emoji.CATS; cat++) {
+            List<String> items = Emoji.ofCat(cat);
+            emojiCatItems.add(items);
+            emojiCatRow[cat] = emojiRows.size();
+            if (items.isEmpty() && cat != 0) continue;
+            emojiRows.add(new int[]{cat, -1});
+            if (items.isEmpty()) emojiRows.add(new int[]{cat, -2});        // 최근 사용이 비었을 때 안내 줄
+            for (int i = 0; i < items.size(); i += emojiCols) emojiRows.add(new int[]{cat, i});
+        }
+        emojiAdapter.notifyDataSetChanged();
+    }
+
+    private static void jumpEmojiCat(int cat) {
+        if (emojiList == null) return;
+        emojiList.setSelection(emojiCatRow[cat]);
+        markEmojiCat(cat);
+    }
+
+    private static void markEmojiCat(int cat) {
+        if (cat == emojiCurCat) return;
+        emojiCurCat = cat;
+        for (int i = 0; i < Emoji.CATS; i++) if (emojiCatBtns[i] != null) emojiCatBtns[i].setSelected(i == cat);
+    }
+
+    private static final android.widget.BaseAdapter emojiAdapter = new android.widget.BaseAdapter() {
+        public int getCount() { return emojiRows.size(); }
+        public Object getItem(int i) { return emojiRows.get(i); }
+        public long getItemId(int i) { return i; }
+        @Override public int getViewTypeCount() { return 2; }
+        @Override public int getItemViewType(int i) { return emojiRows.get(i)[1] < 0 ? 0 : 1; }
+        @Override public boolean isEnabled(int i) { return false; }
+        public View getView(int i, View cv, android.view.ViewGroup parent) {
+            int[] r = emojiRows.get(i);
+            Context c = parent.getContext();
+            if (r[1] < 0) {
+                TextView t = cv instanceof TextView ? (TextView) cv : new TextView(c);
+                t.setTextSize(TypedValue.COMPLEX_UNIT_SP, r[1] == -1 ? 12.5f : 13);
+                t.setTextColor(cHint);
+                t.setPadding(dp(14), dp(r[1] == -1 ? 10 : 14), dp(14), dp(r[1] == -1 ? 4 : 14));
+                t.setText(r[1] == -1 ? Emoji.CAT_NAMES[r[0]] : "최근에 사용한 이모지가 없어요");
+                t.setGravity(r[1] == -1 ? Gravity.START : Gravity.CENTER);
+                return t;
+            }
+            LinearLayout row = cv instanceof LinearLayout ? (LinearLayout) cv : null;
+            if (row == null || row.getChildCount() != emojiCols) {
+                row = row(c);
+                row.setPadding(dp(4), 0, dp(4), 0);
+                for (int k = 0; k < emojiCols; k++) row.addView(emojiCell(c), new LinearLayout.LayoutParams(0, dp(46), 1f));
+            }
+            List<String> items = emojiCatItems.get(r[0]);
+            for (int k = 0; k < emojiCols; k++) {
+                TextView t = (TextView) row.getChildAt(k);
+                int idx = r[1] + k;
+                String e = idx < items.size() ? items.get(idx) : null;
+                t.setText(e == null ? "" : e);
+                t.setTag(e);
+                t.setClickable(e != null);
+            }
+            return row;
+        }
+    };
+
+    // ---- 검색: 이모지 화면 대신 [결과 줄 + 검색 칸]을 자판 위에 띄우고, 자판 입력을 검색 칸으로 받는다 (쿼티 한글)
+    private static View buildEmojiSearchBar(Context c) {
+        LinearLayout p = new LinearLayout(c);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setBackgroundColor(cBg);
+        p.setClickable(true);
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        emojiResults = row(c);
+        hs.addView(emojiResults, new FrameLayout.LayoutParams(-2, -1));
+        p.addView(hs, new LinearLayout.LayoutParams(-1, dp(46)));
+        LinearLayout f = row(c);
+        f.setGravity(Gravity.CENTER_VERTICAL);
+        f.addView(iconBtn(c, LineIcon.BACK, () -> exitEmojiSearch(true), false), new LinearLayout.LayoutParams(dp(44), -1));
+        emojiQueryView = new TextView(c);
+        emojiQueryView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        emojiQueryView.setTextColor(cText);
+        emojiQueryView.setHintTextColor(cHint);
+        emojiQueryView.setHint("이모지 검색 (예: 웃음, 하트, 고양이)");
+        emojiQueryView.setGravity(Gravity.CENTER_VERTICAL);
+        emojiQueryView.setSingleLine(true);
+        emojiQueryView.setPadding(dp(12), 0, dp(12), 0);
+        GradientDrawable fd = new GradientDrawable();
+        fd.setColor(cKey);
+        fd.setCornerRadius(dp(18));
+        emojiQueryView.setBackground(fd);
+        noFocus(emojiQueryView);
+        LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(0, dp(34), 1f);
+        ql.setMargins(0, dp(3), 0, dp(3));
+        f.addView(emojiQueryView, ql);
+        f.addView(iconBtn(c, LineIcon.CLOSE, () -> { emojiQueryKeys.setLength(0); refreshEmojiSearch(); }, false), new LinearLayout.LayoutParams(dp(44), -1));
+        p.addView(f, new LinearLayout.LayoutParams(-1, dp(42)));
+        return p;
+    }
+
+    private static void enterEmojiSearch() {
+        if (emojiPanel != null) emojiPanel.setVisibility(View.GONE);
+        emojiSearch = true;
+        emojiQueryKeys.setLength(0);
+        if (mode != M_KOQ) { emojiPrevMode = mode; cjFinish(); mode = M_KOQ; shiftState = 0; rebuildKeys(); }
+        else emojiPrevMode = -1;
+        if (toolbar != null) toolbar.setVisibility(View.GONE);
+        emojiSearchBar.setVisibility(View.VISIBLE);
+        refreshEmojiSearch();
+    }
+
+    private static void exitEmojiSearch(boolean backToPanel) {
+        emojiSearch = false;
+        if (emojiSearchBar != null) emojiSearchBar.setVisibility(View.GONE);
+        if (toolbar != null) toolbar.setVisibility(View.VISIBLE);
+        if (emojiPrevMode >= 0) { mode = emojiPrevMode; emojiPrevMode = -1; shiftState = 0; rebuildKeys(); }
+        if (backToPanel && emojiPanel != null) {
+            Emoji.loadRecent(svc);
+            fillEmojiRows();
+            emojiPanel.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /** 검색 중 자판 입력. 처리했으면 true */
+    private static boolean emojiSearchKey(int code, String label) {
+        if (!emojiSearch) return false;
+        switch (code) {
+            case K_JAMO: case K_TEXT:
+                if (label != null) emojiQueryKeys.append(label);
+                if (code == K_JAMO && shiftState == 1) { shiftState = 0; refreshKeys(); }
+                break;
+            case K_SPACE: emojiQueryKeys.append(' '); break;
+            case K_BS: if (emojiQueryKeys.length() > 0) emojiQueryKeys.setLength(emojiQueryKeys.length() - 1); break;
+            case K_ENTER: exitEmojiSearch(true); return true;
+            case K_SHIFT: return false;
+            default: return true;            // 다른 키(한/영, 기호 등)는 검색 중에는 쓰지 않음
+        }
+        refreshEmojiSearch();
+        return true;
+    }
+
+    private static void refreshEmojiSearch() {
+        if (emojiQueryView == null) return;
+        char[] k = emojiQueryKeys.toString().toCharArray();
+        String q = Typo.compose(k, 0, k.length);
+        emojiQueryView.setText(q);
+        emojiResults.removeAllViews();
+        Context c = svc;
+        List<String> res = q.trim().isEmpty() ? new ArrayList<>(Emoji.recent) : Emoji.search(q, 80);
+        if (res.isEmpty()) {
+            TextView t = new TextView(c);
+            t.setText(q.trim().isEmpty() ? "검색어를 입력하세요" : "'" + q + "' 에 맞는 이모지가 없어요");
+            t.setTextColor(cHint);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            t.setGravity(Gravity.CENTER_VERTICAL);
+            t.setPadding(dp(14), 0, dp(14), 0);
+            emojiResults.addView(t, new LinearLayout.LayoutParams(-2, -1));
+            return;
+        }
+        for (String e : res) {
+            TextView t = emojiCell(c);
+            t.setText(e);
+            t.setTag(e);
+            emojiResults.addView(t, new LinearLayout.LayoutParams(dp(46), -1));
         }
     }
 
@@ -1461,6 +1763,7 @@ public final class Ext {
 
     /** Hook: start of KeyboardService.onFinishInput(). */
     public static void onFinish(InputMethodService s) {
+        try { if (emojiSearch) exitEmojiSearch(false); if (emojiPanel != null) emojiPanel.setVisibility(View.GONE); } catch (Throwable ignored) {}
         try { Typo.reset(); Spell.reset(spellHost); Typo.flush(s); Calib.settle(s, true); } catch (Throwable ignored) {}
         cj.reset();
         nara.reset();
@@ -1670,7 +1973,7 @@ public final class Ext {
                 shiftState = 0;
                 call(method(svc.getClass(), "toggleLanguage"));
                 break;
-            case K_EMOJI: finishComposing(); call(method(svc.getClass(), "openEmoji")); break;
+            case K_EMOJI: openEmoji(); break;
             case K_ENTER: finishComposing(); call(method(svc.getClass(), "pressEnter")); break;
             default:
                 if (k >= 0 && k < CjEngine.CYCLES.length) cjApply(cj.consonant(k));
@@ -2352,8 +2655,13 @@ public final class Ext {
         final float[] downY = {0};
         final CursorDrag drag = new CursorDrag();
         final Runnable[] repeat = new Runnable[1];
-        repeat[0] = () -> { fixBeforeBackspace(); cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat(); H.postDelayed(repeat[0], 45); };
+        repeat[0] = () -> { if (emojiSearch) { emojiSearchKey(K_BS, null); H.postDelayed(repeat[0], 45); return; } fixBeforeBackspace(); cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat(); H.postDelayed(repeat[0], 45); };
         final Runnable longPress = () -> {
+            if (emojiSearch) {                   // 검색 중: 길게 눌러 나오는 숫자·기호는 검색 칸으로
+                String lt = lpText((KS) f.getTag());
+                if (lt != null && !POPUP.equals(lt)) { fired[0] = true; emojiQueryKeys.append(lt); refreshEmojiSearch(); }
+                return;
+            }
             Typo.reset();
             Spell.beforeKey(spellHost, false);
             KS kk = (KS) f.getTag();
@@ -2407,7 +2715,11 @@ public final class Ext {
                     feedback(v, code, true);
                     typoTouch(kk, v);
                     calibNoteDown(kk, v);
-                    if (code == K_BS) {
+                    if (code == K_BS && emojiSearch) {
+                        emojiSearchKey(K_BS, null);
+                        fired[0] = true;
+                        H.postDelayed(repeat[0], 400);
+                    } else if (code == K_BS) {
                         if (Spell.undo(spellHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else if (Typo.undo(typoHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else {          // 고친 직후의 지우기 = 되돌리기, 아니면 보통 지우기
@@ -2433,6 +2745,7 @@ public final class Ext {
                     }
                     return true;
                 case MotionEvent.ACTION_MOVE:
+                    if (emojiSearch) return true;
                     if (code == K_SPACE && spaceCursorOn()) {
                         float dx = touchRawX - spaceX0;
                         boolean vert = spaceVertical();
@@ -2485,6 +2798,10 @@ public final class Ext {
                     v.setPressed(false);
                     H.removeCallbacks(longPress);
                     H.removeCallbacks(repeat[0]);
+                    if (!fired[0] && emojiSearch && emojiSearchKey(code, kk.label)) {
+                        feedback(v, code, false);
+                        return true;
+                    }
                     if (!fired[0]) {
                         boolean bd = typoBoundary(code, kk.label);
                         Spell.beforeKey(spellHost, bd);

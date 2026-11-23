@@ -29,27 +29,9 @@ public final class LineIcon extends Drawable {
         fill.setColor(color);
     }
 
-    /** 로봇 머리 아이콘: GPT 이미지 생성으로 만든 그림을 그대로 쓴다 (assets/robot_icon.png, 흰 선 + 투명 배경 → 아이콘 색으로 칠함) */
-    private static android.graphics.Bitmap robotMask;
-
-    public static void loadRobot(android.content.Context ctx) {
-        if (robotMask != null || ctx == null) return;
-        try (java.io.InputStream in = ctx.getAssets().open("robot_icon.png")) {
-            robotMask = android.graphics.BitmapFactory.decodeStream(in);
-        } catch (Throwable ignored) {}
-    }
-
     @Override
     public void draw(Canvas c) {
         Rect b = getBounds();
-        if (type == ROBOT && robotMask != null) {
-            int sz = Math.min(b.width(), b.height());
-            int l = b.left + (b.width() - sz) / 2, t = b.top + (b.height() - sz) / 2;
-            Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            bp.setColorFilter(new android.graphics.PorterDuffColorFilter(p.getColor(), android.graphics.PorterDuff.Mode.SRC_IN));
-            c.drawBitmap(robotMask, null, new Rect(l, t, l + sz, t + sz), bp);
-            return;
-        }
         float s = Math.min(b.width(), b.height()) / 24f;
         c.save();
         c.translate(b.left + (b.width() - 24 * s) / 2f, b.top + (b.height() - 24 * s) / 2f);
@@ -202,15 +184,15 @@ public final class LineIcon extends Drawable {
                 c.drawLine(6, 6, 18, 18, p);
                 c.drawLine(18, 6, 6, 18, p);
                 break;
-            case ROBOT:     // 그림(robot_icon.png)을 못 읽었을 때만 쓰는 대신 그림
-                c.drawRoundRect(new RectF(5, 8.5f, 19, 21), 3, 3, p);   // 머리
-                c.drawLine(12, 5.6f, 12, 8.5f, p);                      // 안테나
-                c.drawCircle(12, 3.6f, 1.9f, p);
-                c.drawRoundRect(new RectF(2, 12, 5, 17.5f), 1.4f, 1.4f, p);     // 귀
-                c.drawRoundRect(new RectF(19, 12, 22, 17.5f), 1.4f, 1.4f, p);
-                c.drawCircle(9.3f, 13.8f, 1.1f, p);                     // 눈
-                c.drawCircle(14.7f, 13.8f, 1.1f, p);
-                c.drawLine(10.2f, 17.8f, 13.8f, 17.8f, p);              // 입
+            case ROBOT:     // 네모난 로봇 머리: GPT 이미지 생성 시안(source/design/robot_icon_gpt.png)을 다른 아이콘과 같은 2px 선으로 옮김. 눈·안테나는 선이 뭉치지 않게 키움
+                c.drawRoundRect(new RectF(4.2f, 8.3f, 19.8f, 22.3f), 2.6f, 2.6f, p);     // 머리
+                c.drawLine(12, 5.6f, 12, 8.3f, p);                                      // 안테나
+                c.drawCircle(12, 3.4f, 1.6f, p);
+                c.drawRoundRect(new RectF(2.4f, 12.3f, 3.4f, 17.7f), 0.6f, 0.6f, p);    // 귀
+                c.drawRoundRect(new RectF(20.6f, 12.3f, 21.6f, 17.7f), 0.6f, 0.6f, p);
+                c.drawCircle(8.9f, 14.2f, 1.6f, p);                                     // 눈
+                c.drawCircle(15.1f, 14.2f, 1.6f, p);
+                c.drawLine(10, 18.6f, 14, 18.6f, p);                                    // 입
                 break;
             case PLAY:
                 path.moveTo(8, 5); path.lineTo(19, 12); path.lineTo(8, 19); path.close();

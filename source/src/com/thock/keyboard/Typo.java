@@ -57,7 +57,7 @@ public final class Typo {
     static final Map<String, Integer> learned = new HashMap<>();
     /** 앞으로 무시: 같은 오타 쌍이 다시 모여도 목록에 올리지 않음 */
     static final Set<String> ignored = new HashSet<>();
-    /** 자동 교정 규칙마다 등록 뒤 실제로 고친 횟수 (되돌린 것은 뺌) */
+    /** 자동 교정 규칙마다 등록 뒤 실제로 고친 횟수 (바로 되돌린 것도 셈) */
     static final Map<String, Integer> ruleHits = new HashMap<>();
     private static int dirty;
 
@@ -700,7 +700,6 @@ public final class Typo {
             ic.commitText(d.oldText + (extra == 1 ? b.substring(b.length() - 1) : ""), 1);
             ic.endBatchEdit();
             log.clear();
-            if (d.ruleKey != null) { Integer hc = ruleHits.get(d.ruleKey); if (hc != null && hc > 0) ruleHits.put(d.ruleKey, hc - 1); saveData(c); }
             return true;
         } catch (Throwable t) { android.util.Log.w("ThockTypo", "undo", t); return false; }
     }

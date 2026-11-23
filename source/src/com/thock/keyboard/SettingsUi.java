@@ -524,7 +524,6 @@ public final class SettingsUi {
 
     // ================================================================== pages
     private View pageHome() {
-        LineIcon.loadRobot(a);
         LinearLayout b = scaffold("", null, false);
         b.removeAllViews();
 
@@ -1734,29 +1733,47 @@ public final class SettingsUi {
         return r;
     }
 
+    private int ruleSort;        // 0 가나다, 1 많이 고친 순, 2 적게 고친 순
+
     private View pageTypoRules() {
         Typo.load(a);
-        LinearLayout b = scaffold("자동 교정", "왼쪽 글자를 치고 띄어쓰기·마침표·엔터를 누르면 오른쪽 말로 바로 바뀌어요. 뒤에 글자가 더 붙어도 바뀌어요 (고ㅓ일 → 과일)", true);
-        LinearLayout add = card(b, "추가");
-        final EditText from = field("오타 (예: 장고규가기)");
-        final EditText to = field("바꿀 말 (예: 장곡 가기)");
-        add.addView(from, mlp(-1, -2, 8, 8, 8, 6));
-        add.addView(to, mlp(-1, -2, 8, 0, 8, 8));
+        LinearLayout b = scaffold("자동 교정", null, true);
+        b.addView(tv("오타를 치고 띄어쓰기·마침표·엔터를 누르면 바꿀 말로 바로 바뀌어요. 어절이 오타로 시작하면 뒤 글자는 그대로 두고 바꾸고 (고ㅓ일 → 과일), "
+                + "'ㅓ'처럼 홀로 선 자모가 든 오타는 어절 가운데에 있어도 바꿔요 (사고ㅓ주스 → 사과주스).", 12.5f, sub, false), mlp(-1, -2, 4, 4, 4, 0));
+        // 한 줄: 오타 · 바꿀 말 · 등록
+        LinearLayout add = card(b, null);
+        LinearLayout ar = row();
+        ar.setGravity(Gravity.CENTER_VERTICAL);
+        ar.setPadding(dp(4), dp(4), dp(4), dp(4));
+        final EditText from = field("오타");
+        final EditText to = field("바꿀 말");
+        ar.addView(from, new LinearLayout.LayoutParams(0, -2, 1f));
+        ar.addView(to, mlp(0, -2, 6, 0, 6, 0));
+        ((LinearLayout.LayoutParams) to.getLayoutParams()).weight = 1f;
         final LinearLayout list = col();
-        b.addView(primaryBtn("추가", () -> {
+        TextView ok = primaryBtn("등록", () -> {
             String f = from.getText().toString().trim(), t = to.getText().toString().trim();
             if (f.isEmpty() || t.isEmpty() || f.equals(t) || f.length() > 30) { Toast.makeText(a, "오타와 바꿀 말을 서로 다르게 넣어 주세요 (오타는 30자까지)", Toast.LENGTH_SHORT).show(); return; }
             tryAddRule(f, t, () -> { from.setText(""); to.setText(""); fillRules(list); });
-        }), mlp(-1, -2, 0, 12, 0, 0));
-        LinearLayout lc = card(b, "목록");
+        });
+        ok.setPadding(dp(16), dp(10), dp(16), dp(10));
+        ar.addView(ok, new LinearLayout.LayoutParams(-2, -2));
+        add.addView(ar);
+        // 목록 제목 + 정렬
+        LinearLayout hr = row();
+        hr.setGravity(Gravity.CENTER_VERTICAL);
+        hr.addView(tv("목록 " + Typo.rules.size() + "개", 13, sub, true), new LinearLayout.LayoutParams(0, -2, 1f));
+        hr.addView(chipBtn("많이 고친 순", ruleSort == 1, () -> { ruleSort = ruleSort == 1 ? 0 : 1; show("typo_rules", false); }), mlp(-2, -2, 0, 0, 6, 0));
+        hr.addView(chipBtn("적게 고친 순", ruleSort == 2, () -> { ruleSort = ruleSort == 2 ? 0 : 2; show("typo_rules", false); }));
+        b.addView(hr, mlp(-1, -2, 8, 18, 0, 8));
+        LinearLayout lc = card(b, null);
+        ((LinearLayout.LayoutParams) lc.getLayoutParams()).topMargin = 0;
         final EditText q = field("검색");
         q.setText(ruleQuery);
         lc.addView(q, mlp(-1, -2, 8, 8, 8, 6));
         lc.addView(list);
         onText(q, () -> { ruleQuery = q.getText().toString().trim(); fillRules(list); });
         fillRules(list);
-        note(b, "자동 교정은 오타 제안을 꺼도 동작해요. 바뀐 직후 지우기를 누르면 되돌아가고, 고친 횟수에서도 빠져요.");
-        note(b, "어절이 오타로 시작하면 뒤에 붙은 글자는 그대로 두고 바꿔요 (고ㅓ일 → 과일, 고ㅓ를 → 과를). 'ㅓ'처럼 홀로 선 자모가 든 오타는 어절 가운데에 있어도 바꿔요 (학고ㅓ → 학과).");
         return (View) b.getParent();
     }
 
@@ -1765,6 +1782,10 @@ public final class SettingsUi {
         List<String> ks = new ArrayList<>();
         for (String k : Typo.rules.keySet()) if (ruleQuery.isEmpty() || k.contains(ruleQuery) || Typo.rules.get(k).contains(ruleQuery)) ks.add(k);
         java.util.Collections.sort(ks);
+        if (ruleSort != 0) java.util.Collections.sort(ks, (x, y) -> {        // 고친 횟수 순 (같으면 가나다)
+            int hx = Typo.ruleHits.containsKey(x) ? Typo.ruleHits.get(x) : 0, hy = Typo.ruleHits.containsKey(y) ? Typo.ruleHits.get(y) : 0;
+            return hx != hy ? (ruleSort == 1 ? Integer.compare(hy, hx) : Integer.compare(hx, hy)) : x.compareTo(y);
+        });
         if (ks.isEmpty()) list.addView(tv(ruleQuery.isEmpty() ? "아직 없어요." : "'" + ruleQuery + "' 에 맞는 것이 없어요.", 14, sub, false), mlp(-1, -2, 14, 10, 14, 12));
         for (int i = 0; i < ks.size() && i < 200; i++) {
             final String k = ks.get(i);

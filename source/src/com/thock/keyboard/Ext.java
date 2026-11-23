@@ -1939,8 +1939,51 @@ public final class Ext {
         return b.toString().equals(comp);
     }
 
+    /** Resume the syllable immediately before a collapsed cursor, when the editor supports it. */
+    private static void reopenPrevious(int k) {
+        if (svc == null || !opt("resume_hangul") || cj.isComposing() || nara.isComposing() || !composingNow().isEmpty()) return;
+        boolean q = mode == M_KOQ && k == K_JAMO;
+        boolean c = mode == M_KO && ((k >= 0 && k < CjEngine.CYCLES.length) || k == K_I || k == K_A || k == K_EU);
+        boolean n = mode == M_NARA && (k == K_N_CONS || k == K_N_AE || k == K_N_OU || k == K_N_I || k == K_N_EU);
+        if (!(q || c || n)) return;
+        Object hc = null;
+        try {
+            InputConnection ic = svc.getCurrentInputConnection();
+            if (ic == null) return;
+            android.view.inputmethod.ExtractedText et = ic.getExtractedText(new android.view.inputmethod.ExtractedTextRequest(), 0);
+            if (et == null || et.selectionStart != et.selectionEnd || et.selectionStart < 0) return;
+            int cursor = et.startOffset + et.selectionStart;
+            CharSequence prev = ic.getTextBeforeCursor(1, 0);
+            if (cursor < 1 || prev == null || prev.length() != 1) return;
+            char syllable = prev.charAt(0);
+            if (syllable < 0xAC00 || syllable > 0xD7A3) return;
+            if (q) {
+                Field f = field(svc.getClass(), "composer");
+                hc = f == null ? null : f.get(svc);
+                if (hc == null) return;
+                Method input = hc.getClass().getMethod("input", char.class);
+                int z = syllable - 0xAC00, j = (z / 28) % 21, t = z % 28;
+                String v = new String[]{"ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅗㅏ","ㅗㅐ","ㅗㅣ","ㅛ","ㅜ","ㅜㅓ","ㅜㅔ","ㅜㅣ","ㅠ","ㅡ","ㅡㅣ","ㅣ"}[j];
+                String[] finals = {"","ㄱ","ㄲ","ㄱㅅ","ㄴ","ㄴㅈ","ㄴㅎ","ㄷ","ㄹ","ㄹㄱ","ㄹㅁ","ㄹㅂ","ㄹㅅ","ㄹㅌ","ㄹㅍ","ㄹㅎ","ㅁ","ㅂ","ㅂㅅ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"};
+                String keys = "" + CjEngine.CHO.charAt(z / 588) + v + finals[t];
+                for (int x = 0; x < keys.length(); x++) input.invoke(hc, keys.charAt(x));
+                if (!String.valueOf(syllable).equals(hc.getClass().getMethod("composing").invoke(hc))) {
+                    hc.getClass().getMethod("reset").invoke(hc); return;
+                }
+            } else if (!(c ? cj.reopen(syllable) : nara.reopen(syllable))) return;
+            if (!ic.setComposingRegion(cursor - 1, cursor)) {
+                if (q) hc.getClass().getMethod("reset").invoke(hc); else if (c) cj.reset(); else nara.reset();
+            }
+        } catch (Throwable t) {
+            cj.reset(); nara.reset();
+            try { if (hc != null) hc.getClass().getMethod("reset").invoke(hc); } catch (Throwable ignored) {}
+            android.util.Log.w("ThockExt", "reopen previous", t);
+        }
+    }
+
     private static void cjPress(int k, String text) {
         syncComposing();
+        reopenPrevious(k);
         if (k != K_PUNCT) lastPunct = false;
         switch (k) {
             case K_I: cjApply(cj.vowel(CjEngine.I)); break;
@@ -2703,12 +2746,38 @@ public final class Ext {
         final CursorDrag drag = new CursorDrag();
         final Runnable[] repeat = new Runnable[1];
         final long[] deleteStarted = {0};
+        final boolean[] deleteAllDone = {false};
         repeat[0] = () -> {
             if (emojiSearch) { emojiSearchKey(K_BS, null); H.postDelayed(repeat[0], 45); return; }
-            fixBeforeBackspace(); cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat();
             long held = android.os.SystemClock.uptimeMillis() - deleteStarted[0];
-            long delay = opt("fast_delete") ? (held < 1500 ? 70 : held < 3000 ? 45 : 25) : 70;
-            H.postDelayed(repeat[0], delay);
+            int stage = opt("fast_delete") ? FastDelete.stage(held) : 0;
+            if (stage >= 2) {
+                InputConnection ic = svc == null ? null : svc.getCurrentInputConnection();
+                if (ic == null) return;
+                finishComposing();
+                Calib.fix.reset(); Calib.discardPending(); Typo.reset(); Spell.beforeKey(spellHost, false);
+                if (stage == 3) {
+                    if (!deleteAllDone[0]) {
+                        deleteAllDone[0] = true;
+                        if (ic.performContextMenuAction(android.R.id.selectAll)) ic.commitText("", 1);
+                    }
+                    return;
+                }
+                CharSequence selected = ic.getSelectedText(0);
+                if (selected != null && selected.length() > 0) ic.commitText("", 1);
+                else {
+                    CharSequence before = ic.getTextBeforeCursor(4096, 0);
+                    int n = FastDelete.precedingWordLength(before);
+                    if (n > 0) ic.deleteSurroundingText(n, 0);
+                }
+                H.postDelayed(repeat[0], Math.min(300L, Math.max(1L, 5000L - held)));
+            } else {
+                fixBeforeBackspace();
+                finishComposing(); // long press removes a whole composed syllable
+                cjPress(K_BS, null); Typo.reset(); Spell.beforeKey(spellHost, false); Calib.noteBackspaceRepeat();
+                long next = stage == 0 ? 1000L - held : 3000L - held;
+                H.postDelayed(repeat[0], Math.min(stage == 0 ? 120L : 65L, Math.max(1L, next)));
+            }
         };
         final Runnable longPress = () -> {
             if (emojiSearch) {                   // 검색 중: 길게 눌러 나오는 숫자·기호는 검색 칸으로
@@ -2775,6 +2844,7 @@ public final class Ext {
                         H.postDelayed(repeat[0], 400);
                     } else if (code == K_BS) {
                         deleteStarted[0] = android.os.SystemClock.uptimeMillis();
+                        deleteAllDone[0] = false;
                         if (Spell.undo(spellHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else if (Typo.undo(typoHost, svc)) { Calib.discardPending(); Calib.fix.reset(); }
                         else {          // 고친 직후의 지우기 = 되돌리기, 아니면 보통 지우기

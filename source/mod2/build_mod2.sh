@@ -15,7 +15,7 @@ java -cp "$R8" com.android.tools.r8.D8 --release --min-api 26 --lib "$AJ" --outp
 "$PY" "$H/axml_add_queries.py" "$W/man/AndroidManifest.xml" "$W/AndroidManifest.q.xml" com.google.android.googlequicksearchbox com.google.android.tts
 # 버전: 설치 화면·설정 맨 아래에 보이는 이름과 번호를 빌드마다 올린다 (빌드 번호 = git 커밋 수 + 1, 이 빌드를 커밋하면 그 번호가 됨)
 N=$(git -C "$S" rev-list --count HEAD 2>/dev/null || echo 0); N=$((N + 1))
-VN="${VERSION_NAME:-3.33-mod $(date +%Y.%m.%d) ($N)}"; VC="${VERSION_CODE:-$((1000 + N))}"
+VN="${VERSION_NAME:-$(cat "$H/VERSION")}"; VC="${VERSION_CODE:-$((1000 + N))}"
 "$PY" "$H/axml_set_version.py" "$W/AndroidManifest.q.xml" "$W/AndroidManifest.xml" "$VN" "$VC"
 echo "version: $VN / $VC"
 "$PY" "$H/spell_build.py" "$H/spell_list.tsv" "$W/spell.tsv"      # 맞춤법 목록 원본 → 앱용

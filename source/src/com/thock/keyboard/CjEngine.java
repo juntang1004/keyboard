@@ -42,6 +42,19 @@ public final class CjEngine {
     private Object[] save() { return new Object[]{prefix, cho, vs, jong}; }
     private void restore(Object[] s) { prefix = (String) s[0]; cho = (Character) s[1]; vs = (String) s[2]; jong = (Character) s[3]; }
 
+    /** Reopen one already committed Hangul syllable. */
+    public boolean reopen(char syllable) {
+        if (syllable < 0xAC00 || syllable > 0xD7A3 || isComposing()) return false;
+        int n = syllable - 0xAC00;
+        char v = JUNG.charAt((n / 28) % 21);
+        String strokes = null;
+        for (Map.Entry<String, Character> e : V.entrySet()) if (e.getValue() == v) { strokes = e.getKey(); break; }
+        if (strokes == null) return false;
+        cho = CHO.charAt(n / 588); vs = strokes;
+        int t = n % 28; jong = t == 0 ? 0 : JONG.charAt(t);
+        lastKey = -1; snap = null; return true;
+    }
+
     public boolean isComposing() { return !prefix.isEmpty() || cho != 0 || !vs.isEmpty(); }
     public boolean lastWasConsonant() { return lastKey >= 0 && lastKey < 10; }
     public void breakCycle() { lastKey = -1; }

@@ -897,8 +897,12 @@ public final class SettingsUi {
         switchRow(nr, "숫자줄 (쿼티·영어)", "끄면 윗줄 키에 1~0이 작게 표시되고, 길게 누르면 숫자가 나와요", ext().getBoolean("qnumrow", true),
                 on -> ext().edit().putBoolean("qnumrow", on).apply());
 
+        LinearLayout rejoin = card(b, "한글 입력");
+        switchRow(rejoin, "앞글자 이어쓰기", "커서 앞 한글을 이어서 조합해요 (고 + ㅏ → 과)", ext().getBoolean("resume_hangul", true),
+                on -> ext().edit().putBoolean("resume_hangul", on).apply());
+
         LinearLayout del = card(b, "지우기");
-        switchRow(del, "빠른 지우기", "지우기를 길게 누르면 점점 빠르게 지워요", ext().getBoolean("fast_delete", true),
+        switchRow(del, "빠른 지우기", "길게 누르면 글자 → 단어 → 전체 순으로 지워요", ext().getBoolean("fast_delete", true),
                 on -> ext().edit().putBoolean("fast_delete", on).apply());
 
         LinearLayout cm = card(b, "커서 이동");

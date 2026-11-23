@@ -42,6 +42,15 @@ public final class NaraEngine {
     private Object[] save() { return new Object[]{prefix, cho, jung, jong}; }
     private void restore(Object[] s) { prefix = (String) s[0]; cho = (Character) s[1]; jung = (Character) s[2]; jong = (Character) s[3]; }
 
+    /** Reopen one already committed Hangul syllable. */
+    public boolean reopen(char syllable) {
+        if (syllable < 0xAC00 || syllable > 0xD7A3 || isComposing()) return false;
+        int n = syllable - 0xAC00;
+        cho = CHO.charAt(n / 588); jung = JUNG.charAt((n / 28) % 21);
+        int t = n % 28; jong = t == 0 ? 0 : JONG.charAt(t);
+        lastKey = -1; lastJamo = 0; snap = null; return true;
+    }
+
     public boolean isComposing() { return !prefix.isEmpty() || cho != 0 || jung != 0; }
     public void reset() { prefix = ""; cho = jung = jong = 0; lastKey = -1; lastJamo = 0; snap = null; }
     public String composing() { return prefix + cur(); }
